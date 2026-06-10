@@ -39,6 +39,15 @@ DEFAULT_LICENSE_FILE = Path.home() / ".lab-factory" / "license.json"
 DEFAULT_VENDOR_DIR = SERVER_DIR / "vendor"
 
 
+def configure_stdio() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
+
+configure_stdio()
+
+
 def vendor_dir() -> Path:
     return Path(os.environ.get("LAB_FACTORY_VENDOR_DIR", DEFAULT_VENDOR_DIR)).expanduser().resolve()
 

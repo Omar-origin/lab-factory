@@ -20,8 +20,18 @@ import install as installer
 import server
 
 
+def configure_stdio() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
+
+configure_stdio()
+
+
 def print_json(data: Any) -> None:
-    print(json.dumps(data, ensure_ascii=False, indent=2))
+    text = json.dumps(data, ensure_ascii=False, indent=2)
+    sys.stdout.write(text + "\n")
 
 
 def call_tool(handler: Callable[[dict[str, Any]], dict[str, Any]], args: dict[str, Any]) -> int:
