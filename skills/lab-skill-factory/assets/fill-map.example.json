@@ -1,0 +1,29 @@
+{
+  "version": "0.1.0",
+  "source_fill": "fill.md",
+  "target_document": "copied-report.docx",
+  "copy_mode": "byte_for_byte_first",
+  "format_strategy": "inherit_target_anchor",
+  "items": [
+    {
+      "id": "purpose-001",
+      "source": "fill.md#实验目的",
+      "target_anchor": "实验目的",
+      "operation": "insert_after",
+      "preserve_original": true,
+      "format_strategy": "inherit_target_anchor",
+      "requires_user_confirmation": true,
+      "notes": "第一次草稿只在原有实验目的标题后补充内容，不删除模板说明。"
+    },
+    {
+      "id": "screenshot-001",
+      "source": "fill.md#截图/绘图占位",
+      "target_anchor": "实验过程截图",
+      "operation": "insert_after",
+      "preserve_original": true,
+      "format_strategy": "inherit_target_anchor",
+      "requires_user_confirmation": true,
+      "notes": "仅插入截图占位和用户操作提示，不伪造截图。"
+    }
+  ]
+}

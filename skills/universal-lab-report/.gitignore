@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.DS_Store
+*.tmp
+*.bak
+artifacts/
+draft/
+final/
+notes/
+source-copy/

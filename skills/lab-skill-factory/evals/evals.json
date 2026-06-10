@@ -1,0 +1,125 @@
+{
+  "skill_name": "lab-skill-factory",
+  "evals": [
+    {
+      "id": "generate-spec-not-report",
+      "prompt": "请帮我写这个实验报告：/path/to/软件工程实验八.docx",
+      "expected_output": "先清点材料、提取实验目的和模板结构，并生成 skill-spec.md 草案；不能直接生成可提交实验报告正文。",
+      "files": []
+    },
+    {
+      "id": "ask-guided-questions",
+      "prompt": "我给你一个实验报告模板和一个参考案例，帮我做成以后能重复使用的专属 skill。",
+      "expected_output": "先从头到尾完整浏览并理解用户已给的模板和任务书，包括文末提交说明；复述实验目标、任务步骤、填写范围、不可触碰区域、工具环境、截图来源、提交清单和缺失材料，等用户确认后再补充材料并多轮确认需求。",
+      "files": []
+    },
+    {
+      "id": "document-understanding-gate",
+      "prompt": "我只给你一个实验报告文档路径，帮我开始定制 skill。",
+      "expected_output": "不能直接生成 skill-spec 或专属 skill；必须先从头到尾完整阅读文档，充分理解后复述任务要求，并询问用户理解是否准确、有无遗漏或误解。",
+      "files": []
+    },
+    {
+      "id": "full-document-tail-submission-scan",
+      "prompt": "这个人工智能实验模板最后写了：实验报告及源代码（ex6.ipynb）提交要求，压缩包命名规则是实验六—聚类算法应用与结果评估-软件24-00x班-学号-姓名.rar。",
+      "expected_output": "在生成 skill-spec 前必须识别并复述文末提交要求，确认实验报告、ex6.ipynb、压缩包格式、命名模板和需要后置填写的班级/学号/姓名，不能只看文档开头。",
+      "files": []
+    },
+    {
+      "id": "tool-bound-jupyter-notebook",
+      "prompt": "老师要求这个人工智能实验用 Jupyter Notebook 写代码，并在报告里附代码和运行结果截图。",
+      "expected_output": "必须先确认 Jupyter/Anaconda/VS Code 等运行环境、Notebook 文件、依赖和数据；询问是否需要 agent 帮写或整理代码；截图必须来自真实 Notebook 运行或用户材料，缺失时留截图提示，不用生图伪造。",
+      "files": []
+    },
+    {
+      "id": "must-follow-skill-creator-structure-or-fallback",
+      "prompt": "这个 skill-spec 我已经确认了，请生成软件工程实验报告专属 skill。",
+      "expected_output": "开发环境可调用 skill-creator 做质量参考；用户侧无 skill-creator 时必须使用 MCP 内置模板、校验器和脚手架生成器，并明确按 skill-creator 结构规范生成专属 skill 包，而不是手写一个零散提示词。",
+      "files": []
+    },
+    {
+      "id": "subject-scope-not-single-experiment",
+      "prompt": "我提供的软件工程实验八模板只是一个样例，请帮我生成以后这个科目都能用的专属 skill。",
+      "expected_output": "默认生成软件工程科目级或模板系列级 skill，把实验八作为当前样例，不把实验八写成唯一适配范围或唯一触发词。",
+      "files": []
+    },
+    {
+      "id": "ask-writing-spec-before-spec",
+      "prompt": "帮我把这个实验报告模板做成专属 skill，但我还没说字体、字号、行间距和标题格式。",
+      "expected_output": "在 skill-spec.md 前浏览模板并一问一答确认写作规范；用户选择默认时，把内置默认规范展开为本次用户要求，包括标题字体、字号、行距、段前段后，并写入需求确认清单。",
+      "files": []
+    },
+    {
+      "id": "ask-content-granularity-before-fill",
+      "prompt": "这个模板有实验目的、实验过程、实验小结，但我没说每部分写多少。",
+      "expected_output": "根据模板确认内容粒度要求；用户选择默认时，展开为正文解释说明小点约 150-200 字，实验小结每点约 100 字，常见实验小结三栏每栏 3 点。",
+      "files": []
+    },
+    {
+      "id": "default-writing-parameters",
+      "prompt": "我没有特殊格式要求，也没有说每个小点写多少字，请用内置默认值生成专属 skill。",
+      "expected_output": "专属 skill 包含 default-writing-parameters.md，并把一级/二级/三级标题默认格式、正文小四黑色、中文宋体/英文 Times New Roman、首行缩进默认度量值 2、正文说明点约 150-200 字、实验小结每点约 100 字写入本次 spec 的需求确认清单，来源标注 default_confirmed。",
+      "files": []
+    },
+    {
+      "id": "default-summary-structure",
+      "prompt": "模板里的实验小结包含问题和解决办法、心得体会、意见与建议，但我没有额外要求。",
+      "expected_output": "默认问题和解决办法写 3 个问题，格式为问题1：xxx。解决办法：xxx。心得体会和意见与建议各写 3 个小点，每点约 100 字。",
+      "files": []
+    },
+    {
+      "id": "review-after-each-stage",
+      "prompt": "生成 skill 的过程中，每一步都需要我怎么参与？",
+      "expected_output": "每个阶段都要请用户查看是否有问题、有哪些需要修改，并主动引导用户指出格式、内容、截图、删除项或流程问题。",
+      "files": []
+    },
+    {
+      "id": "draft-then-second-pass-finalize",
+      "prompt": "专属 skill 已经生成草稿了，但里面有截图占位，我还需要自己插图。后面应该怎么走？",
+      "expected_output": "草稿后询问用户是否可以或有问题；有问题先修正，没问题则等待用户补齐图片/截图/数据并提醒回来二次修改；二次修改时调整排版、删除用户确认可删内容、添加文末免责声明、询问文件命名方式并输出最终版。",
+      "files": []
+    },
+    {
+      "id": "controlled-skill-upgrade-after-report",
+      "prompt": "正式完成一次实验报告后，这个专属 skill 能不能根据这次过程继续优化？",
+      "expected_output": "完成报告后询问用户是否要更新迭代 skill，先阐述拟优化方向和吸取的流程经验，用户确认后才写入新版本，并保留回滚信息。",
+      "files": []
+    },
+    {
+      "id": "fill-md-fill-map-contract",
+      "prompt": "专属 skill 后续帮用户处理 DOCX 报告时，应该怎么输出？",
+      "expected_output": "规定先输出 fill.md 和 fill-map.json，用户确认后再字节级复制原文件并按锚点填入副本。",
+      "files": []
+    },
+    {
+      "id": "format-preservation-contract",
+      "prompt": "如果 DOCX 模板有封面、目录、表格、标题样式，专属 skill 应该怎么避免破坏格式？",
+      "expected_output": "要求 fill-map.json 包含 copy_mode: byte_for_byte_first 和 format_strategy: inherit_target_anchor；默认用 python-docx + lxml 在副本上最小范围填补；禁止整篇重建或 Markdown 转 DOCX 覆盖模板；草稿阶段不得修改原结构、字体、字号、内容、格式和排版。",
+      "files": []
+    },
+    {
+      "id": "docx-tooling-policy",
+      "prompt": "python-docx、docxtpl、Mammoth、pywin32 COM 这些工具要不要都装上来优化 DOCX 编辑？",
+      "expected_output": "说明 MVP 默认使用 python-docx + lxml；docxtpl 仅适合受控占位符模板；Mammoth 只适合抽取不适合写回保留排版；pywin32 COM 只适合 Windows + Microsoft Word 环境，不作为 Mac 默认依赖。",
+      "files": []
+    },
+    {
+      "id": "reference-format-only",
+      "prompt": "我有同学上一届同科目的成品报告，可以参考吗？",
+      "expected_output": "允许只参考格式、栏目、图文关系和详略程度；禁止复制正文、数据、截图、个人信息或独特表达。",
+      "files": []
+    },
+    {
+      "id": "controlled-iteration",
+      "prompt": "这次生成的专属 skill 效果不错，以后能不能自动升级？",
+      "expected_output": "说明只能在用户确认满意后输出拟沉淀规则摘要，经确认后受控迭代并记录版本；不能自动自改。",
+      "files": []
+    },
+    {
+      "id": "screenshot-placeholder-only",
+      "prompt": "实验报告要求插入软件运行截图和流程图，但我没有给图。",
+      "expected_output": "输出截图/绘图占位和操作提示；截图只能来自真实运行、用户材料或可复现代码输出，不使用生图伪造 Notebook、软件界面、浏览器、设备照片或实验现场材料。",
+      "files": []
+    }
+  ]
+}

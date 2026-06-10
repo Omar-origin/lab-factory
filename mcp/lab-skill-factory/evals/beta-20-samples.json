@@ -1,0 +1,26 @@
+{
+  "version": "0.1.0",
+  "description": "Twenty beta smoke samples for fill-map writeback across Markdown and DOCX.",
+  "samples": [
+    {"id": "md-insert-purpose", "format": "md", "operation": "insert_after", "heading": "实验目的", "anchor": "## 实验目的", "content": "本实验用于验证填补式写入流程。"},
+    {"id": "md-insert-env", "format": "md", "operation": "insert_after", "heading": "实验环境", "anchor": "## 实验环境", "content": "实验环境包括 Python、Jupyter Notebook 和本机浏览器。"},
+    {"id": "md-replace-placeholder", "format": "md", "operation": "replace_placeholder", "heading": "正文内容", "anchor": "<待填写正文>", "content": "这里是根据任务要求生成的正文说明。"},
+    {"id": "md-table-placeholder", "format": "md", "operation": "fill_table_cell", "heading": "表格内容", "anchor": "<表格待填>", "content": "表格填补内容"},
+    {"id": "md-screenshot-placeholder", "format": "md", "operation": "insert_after", "heading": "截图/绘图占位", "anchor": "## 实验截图", "content": "【截图：请插入真实运行截图，不使用生图伪造】"},
+    {"id": "md-summary", "format": "md", "operation": "insert_after", "heading": "实验小结", "anchor": "## 实验小结", "content": "问题1：运行环境未配置。解决办法：补充依赖并重新运行。"},
+    {"id": "md-final-note", "format": "md", "operation": "insert_after", "heading": "合规提示", "anchor": "## 附录", "content": "本文档中的 AI 辅助生成内容仅供学习参考。"},
+    {"id": "md-tool-artifact", "format": "md", "operation": "replace_placeholder", "heading": "工具环境与提交确认", "anchor": "<工具环境>", "content": "Jupyter Notebook，提交报告和 ex6.ipynb。"},
+    {"id": "md-source-code", "format": "md", "operation": "insert_after", "heading": "源码说明", "anchor": "## 源码说明", "content": "源码文件需与报告一并提交，文件名按任务书要求填写。"},
+    {"id": "md-reference-boundary", "format": "md", "operation": "insert_after", "heading": "参考案例使用边界", "anchor": "## 参考案例", "content": "参考案例仅学习格式和图文关系，不复制正文。"},
+    {"id": "docx-insert-purpose", "format": "docx", "operation": "insert_after", "heading": "实验目的", "anchor": "实验目的", "content": "本实验用于验证 DOCX 最小范围填补。"},
+    {"id": "docx-insert-env", "format": "docx", "operation": "insert_after", "heading": "实验环境", "anchor": "实验环境", "content": "实验环境为 Windows 或 macOS 本机环境。"},
+    {"id": "docx-replace-placeholder", "format": "docx", "operation": "replace_placeholder", "heading": "正文内容", "anchor": "<待填写正文>", "content": "这里是 DOCX 占位符替换内容。"},
+    {"id": "docx-table-placeholder", "format": "docx", "operation": "fill_table_cell", "heading": "表格内容", "anchor": "<表格待填>", "content": "DOCX 表格填补内容"},
+    {"id": "docx-table-index", "format": "docx", "operation": "fill_table_cell", "heading": "表格内容", "anchor": "table:0:1:1", "content": "按表格坐标填补"},
+    {"id": "docx-screenshot-placeholder", "format": "docx", "operation": "insert_after", "heading": "截图/绘图占位", "anchor": "实验截图", "content": "【截图：请插入真实运行截图，不使用生图伪造】"},
+    {"id": "docx-summary", "format": "docx", "operation": "insert_after", "heading": "实验小结", "anchor": "实验小结", "content": "心得体会：通过本次实验理解了工具流程和结果核验的重要性。"},
+    {"id": "docx-final-note", "format": "docx", "operation": "insert_after", "heading": "合规提示", "anchor": "附录", "content": "本文档中的 AI 辅助生成内容仅供学习参考。"},
+    {"id": "docx-tool-artifact", "format": "docx", "operation": "replace_placeholder", "heading": "工具环境与提交确认", "anchor": "<工具环境>", "content": "Jupyter Notebook，提交报告和 ex6.ipynb。"},
+    {"id": "docx-reference-boundary", "format": "docx", "operation": "insert_after", "heading": "参考案例使用边界", "anchor": "参考案例", "content": "参考案例仅学习格式和图文关系，不复制正文。"}
+  ]
+}

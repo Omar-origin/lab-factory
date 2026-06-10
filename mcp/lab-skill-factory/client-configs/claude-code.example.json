@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "lab-skill-factory": {
+      "command": "python3",
+      "args": [
+        "/Users/omar/Documents/New project/mcp/lab-skill-factory/cli.py",
+        "serve-mcp"
+      ],
+      "env": {
+        "LAB_FACTORY_SKILL_ROOT": "/Users/omar/Documents/New project/skills/lab-skill-factory",
+        "LAB_FACTORY_LICENSE_DB": "/Users/omar/Documents/New project/mcp/lab-skill-factory/activation_codes.json"
+      }
+    }
+  }
+}

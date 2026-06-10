@@ -1,0 +1,7 @@
+activation_codes.json
+*.license.json
+dist/
+build/pyinstaller-work/
+build/*.spec
+__pycache__/
+*.pyc

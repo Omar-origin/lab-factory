@@ -1,0 +1,60 @@
+{
+  "skill_name": "universal-lab-report",
+  "evals": [
+    {
+      "id": "docx-template-missing-screenshots",
+      "prompt": "使用 universal-lab-report skill，根据我提供的实验任务书和 DOCX 报告模板生成草稿。实验需要截图，但我还没有截图，请先完成能完成的内容并告诉我每张图怎么补。",
+      "expected_output": "先清点材料、复制工作区、查看任务书和模板，明确实验要求、环境工具、需填写范围和不可触碰范围；确认写作/格式要求及是否有同科目参考案例；生成草稿版；保留清晰截图占位和用户待办；不修改源模板；不删除模板原有提示文字；文末有免责声明。"
+    },
+    {
+      "id": "markdown-report-with-real-data",
+      "prompt": "使用 universal-lab-report skill，把这个 Markdown 实验要求和实验原始数据整理成一份 Markdown 实验报告。",
+      "expected_output": "优先使用真实数据；结构覆盖任务要求；输出 Markdown；不添加虚构数据；文末有免责声明。"
+    },
+    {
+      "id": "sample-report-firewall",
+      "prompt": "使用 universal-lab-report skill，根据任务书和一个学长的成品报告生成我的草稿。成品报告只能参考完整度，不要照抄。",
+      "expected_output": "询问或确认参考案例的使用范围；说明样例只学习排版、栏目、图文关系和详略程度；生成不同的证据和分析路径；不复制样例段落、数据、截图或个人信息。"
+    },
+    {
+      "id": "reference-example-mode",
+      "prompt": "使用 universal-lab-report skill。没有真实数据，我允许你生成参考示例数据，但报告正文必须说明只是参考，需要我核验。",
+      "expected_output": "进入参考示例模式；正文标注参考性质；数据内部一致；交付说明列出证据模式。"
+    },
+    {
+      "id": "finalize-and-custom-skill",
+      "prompt": "我已经补齐截图和个人信息了，请使用 universal-lab-report skill 生成最终版。完成后如果我满意，帮我沉淀成我的计网实验报告专属 skill。",
+      "expected_output": "执行 finalize 前询问用户哪些原有内容、模板提示或可删文字需要删除；只删除用户确认的内容；清理草稿提示；保留免责声明；询问满意度；用户确认前只输出拟沉淀规则摘要，不直接写专属 skill。"
+    },
+    {
+      "id": "upfront-requirements-gate",
+      "prompt": "请使用 universal-lab-report skill：/path/to/skill。帮我完成这个实验报告：/path/to/report.docx",
+      "expected_output": "不能直接开写；先清点并查看文档，提取实验要求、所需环境和工具；列出需要填写的部分和不可触碰范围；按一问一答方式确认关键写作要求；用户未提出的格式项记录为使用内置默认要求；询问是否有同科目参考案例；环境默认本机执行，只有必须明确时才追问具体软件、版本、平台、数据文件或运行环境。"
+    },
+    {
+      "id": "draft-preserves-original-content",
+      "prompt": "使用 universal-lab-report skill 生成草稿。模板里有一些红字说明写着“填写后删除”，你觉得没用也不要删。",
+      "expected_output": "草稿阶段完整保留模板原有文字和“填写后删除”等提示；新增内容只补充或插入；交付时列出待用户确认删除项，等待 finalize 前确认。"
+    },
+    {
+      "id": "fillable-scope-gate",
+      "prompt": "使用 universal-lab-report skill。报告模板里有很多章节，但老师只要求填写实验步骤和实验结果分析。",
+      "expected_output": "查看任务书和模板后，向用户确认只填写实验步骤和实验结果分析；未被要求或未确认的章节保持原样；不进行顺手改写、删除或排版调整。"
+    },
+    {
+      "id": "cover-info-and-file-naming",
+      "prompt": "我已经完成实验并补齐截图了，请使用 universal-lab-report skill 做最终整理，封面和文件名也帮我处理。",
+      "expected_output": "进入 finalize 前查看封面字段和输出要求；询问姓名、学号、班级、课程名、指导教师、日期等缺失个人信息；确认文件命名方式；只在最终版副本和文件名中使用这些信息，不写入专属 skill。"
+    },
+    {
+      "id": "docx-template-preservation",
+      "prompt": "使用 universal-lab-report skill 基于 DOCX 模板生成草稿。模板有目录、文档变更历史、说明书模板、实验小结锚点和考核表。",
+      "expected_output": "草稿必须保留目录、文档变更历史、说明书模板、实验小结原锚点和考核表；新增内容必须绑定锚点；不得把整篇报告塞进单个表格单元格；生成后用 compare_docx_preservation.py 或等价检查确认原文未丢失。"
+    },
+    {
+      "id": "summary-anchor-insertion",
+      "prompt": "使用 universal-lab-report skill 生成实验小结。模板底部已经有“实验小结（包括问题和解决办法、心得体会、意见与建议等）”。",
+      "expected_output": "不新建重复的“实验小结”标题；在原有实验小结锚点后插入问题、心得和建议；不得插入到前面的说明书框、表格或目录中。"
+    }
+  ]
+}

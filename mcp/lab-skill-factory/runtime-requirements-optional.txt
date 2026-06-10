@@ -1,0 +1,10 @@
+# Optional enhancements. Do not install all of these blindly in the MVP.
+#
+# docxtpl is only for controlled placeholder templates.
+docxtpl>=0.16,<1
+#
+# mammoth is only for read-only DOCX extraction, not DOCX write-back.
+mammoth>=1.8,<2
+#
+# pywin32 is Windows-only and only useful when Microsoft Word is installed.
+pywin32>=306; platform_system == "Windows"

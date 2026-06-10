@@ -1,0 +1,30 @@
+.DS_Store
+__pycache__/
+*.pyc
+
+# Local agent/workspace state
+.codex/
+.agents/
+
+# Local outputs and user report material
+实验报告助手输出/
+outputs/
+output/
+generated/
+workspace/
+*-workspace/
+
+# Python/root build artifacts
+.venv/
+venv/
+/build/
+/dist/
+*.spec
+
+# Lab Factory local secrets and packaged artifacts
+mcp/lab-skill-factory/activation_codes.json
+mcp/lab-skill-factory/*.license.json
+mcp/lab-skill-factory/vendor/
+mcp/lab-skill-factory/dist/
+mcp/lab-skill-factory/build/pyinstaller-work/
+mcp/lab-skill-factory/build/*.spec
