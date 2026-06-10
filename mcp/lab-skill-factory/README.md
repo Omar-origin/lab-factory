@@ -38,6 +38,7 @@ python3 /Users/omar/Documents/New\ project/mcp/lab-skill-factory/cli.py serve-mc
 ```bash
 /path/to/lab-factory status
 /path/to/lab-factory check-runtime
+/path/to/lab-factory mcp-smoke
 /path/to/lab-factory serve-mcp
 ```
 
@@ -45,6 +46,7 @@ python3 /Users/omar/Documents/New\ project/mcp/lab-skill-factory/cli.py serve-mc
 
 ```bash
 lab-factory activate <activation-code>
+lab-factory mcp-smoke
 lab-factory inspect <材料路径...>
 lab-factory extract-docx <模板.docx>
 lab-factory validate-spec <skill-spec.md>

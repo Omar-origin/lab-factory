@@ -21,9 +21,12 @@ import server
 
 
 def configure_stdio() -> None:
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8", errors="replace")
+    if hasattr(sys.stdin, "reconfigure"):
+        sys.stdin.reconfigure(encoding="utf-8", errors="replace")
 
 
 configure_stdio()
@@ -87,8 +90,78 @@ def run_beta_tests(_: argparse.Namespace) -> int:
             return int(exc.code or 0) if isinstance(exc.code, int) else 1
         finally:
             sys.argv = original_argv
-    proc = subprocess.run([sys.executable, str(script)], text=True, check=False)
+    proc = subprocess.run(
+        [sys.executable, str(script)],
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
     return proc.returncode
+
+
+def run_mcp_smoke(_: argparse.Namespace) -> int:
+    command = (
+        [sys.executable, "serve-mcp"]
+        if server.FROZEN
+        else [sys.executable, str(server.SERVER_DIR / "cli.py"), "serve-mcp"]
+    )
+    request = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2025-06-18",
+            "capabilities": {},
+            "clientInfo": {"name": "lab-factory-cli-smoke", "version": "0"},
+        },
+    }
+    payload = (json.dumps(request, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
+    env = os.environ.copy()
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+    proc = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+    try:
+        stdout, stderr = proc.communicate(payload, timeout=10)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        stdout, stderr = proc.communicate()
+        print_json(
+            {
+                "ok": False,
+                "error": "MCP stdio smoke test timed out",
+                "command": command,
+                "stderr": stderr.decode("utf-8", errors="replace"),
+            }
+        )
+        return 1
+    if proc.returncode != 0:
+        print_json(
+            {
+                "ok": False,
+                "error": f"MCP server exited with status {proc.returncode}",
+                "command": command,
+                "stderr": stderr.decode("utf-8", errors="replace"),
+            }
+        )
+        return 1
+    try:
+        first_line = next(line for line in stdout.splitlines() if line.strip())
+        response = json.loads(first_line.decode("utf-8"))
+    except Exception as exc:
+        print_json(
+            {
+                "ok": False,
+                "error": f"Failed to parse MCP response: {exc}",
+                "command": command,
+                "stdout": stdout.decode("utf-8", errors="replace"),
+                "stderr": stderr.decode("utf-8", errors="replace"),
+            }
+        )
+        return 1
+    server_info = ((response.get("result") or {}).get("serverInfo") or {}) if isinstance(response, dict) else {}
+    ok = response.get("id") == 1 and server_info.get("name") == "lab-factory-mcp"
+    print_json({"ok": ok, "command": command, "response": response})
+    return 0 if ok else 1
 
 
 def run_embedded_skill_script(argv: list[str]) -> int:
@@ -120,6 +193,7 @@ def main() -> int:
     sub.add_parser("serve-mcp", help="Run the stdio MCP server.")
     sub.add_parser("status", help="Show activation and runtime status.")
     sub.add_parser("check-runtime", help="Check bundled/runtime Python dependencies.")
+    sub.add_parser("mcp-smoke", help="Run a local MCP stdio handshake smoke test.")
 
     activate = sub.add_parser("activate", help="Activate with a beta activation code.")
     activate.add_argument("activation_code")
@@ -178,6 +252,8 @@ def main() -> int:
         return call_tool(server.tool_status, {})
     if args.command == "check-runtime":
         return call_tool(server.tool_check_runtime, {})
+    if args.command == "mcp-smoke":
+        return run_mcp_smoke(args)
     if args.command == "activate":
         return call_tool(
             server.tool_activate,

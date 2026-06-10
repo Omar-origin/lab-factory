@@ -29,6 +29,7 @@ Windows PowerShell 示例：
 ```powershell
 & "C:\实际安装路径\Lab Factory\lab-factory.exe" status
 & "C:\实际安装路径\Lab Factory\lab-factory.exe" check-runtime
+& "C:\实际安装路径\Lab Factory\lab-factory.exe" mcp-smoke
 ```
 
 macOS/Linux 示例：
@@ -36,9 +37,12 @@ macOS/Linux 示例：
 ```bash
 "/actual/path/lab-factory" status
 "/actual/path/lab-factory" check-runtime
+"/actual/path/lab-factory" mcp-smoke
 ```
 
 如果路径包含空格，必须加引号。不要猜路径。
+
+不要通过“直接运行 `serve-mcp` 是否停留在前台或是否有输出”来判断 MCP 是否可用。`serve-mcp` 是 stdio MCP 子进程，只接受 MCP JSON-RPC 输入；使用 `mcp-smoke` 做握手验证。
 
 ## 优先使用内置 install 命令
 

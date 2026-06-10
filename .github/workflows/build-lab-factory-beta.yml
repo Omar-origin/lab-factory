@@ -58,6 +58,8 @@ jobs:
         run: |
           ./mcp/lab-skill-factory/dist/macos/lab-factory status
           ./mcp/lab-skill-factory/dist/macos/lab-factory check-runtime
+          ./mcp/lab-skill-factory/dist/macos/lab-factory mcp-smoke
+          python3 mcp/lab-skill-factory/scripts/smoke_mcp_stdio.py ./mcp/lab-skill-factory/dist/macos/lab-factory serve-mcp
 
       - name: Smoke test Windows binary
         if: runner.os == 'Windows'
@@ -67,6 +69,8 @@ jobs:
         run: |
           .\mcp\lab-skill-factory\dist\windows\lab-factory.exe status
           .\mcp\lab-skill-factory\dist\windows\lab-factory.exe check-runtime
+          .\mcp\lab-skill-factory\dist\windows\lab-factory.exe mcp-smoke
+          python .\mcp\lab-skill-factory\scripts\smoke_mcp_stdio.py .\mcp\lab-skill-factory\dist\windows\lab-factory.exe serve-mcp
 
       - name: Smoke test Windows installer
         if: runner.os == 'Windows'
@@ -95,6 +99,8 @@ jobs:
           }
           & $installedExe status
           & $installedExe check-runtime
+          & $installedExe mcp-smoke
+          python .\mcp\lab-skill-factory\scripts\smoke_mcp_stdio.py $installedExe serve-mcp
           $uninstaller = Join-Path $installDir "unins000.exe"
           if (Test-Path $uninstaller) {
             & $uninstaller /VERYSILENT /SUPPRESSMSGBOXES /NORESTART

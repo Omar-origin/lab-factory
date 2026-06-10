@@ -40,9 +40,12 @@ DEFAULT_VENDOR_DIR = SERVER_DIR / "vendor"
 
 
 def configure_stdio() -> None:
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8", errors="replace")
+    if hasattr(sys.stdin, "reconfigure"):
+        sys.stdin.reconfigure(encoding="utf-8", errors="replace")
 
 
 configure_stdio()
@@ -341,6 +344,8 @@ def run_skill_script(
         env=env,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=timeout,
         check=False,
     )
@@ -1046,8 +1051,12 @@ def handle_request(message: dict[str, Any]) -> dict[str, Any] | None:
         return make_error(request_id, -32000, str(exc))
 
 
-def read_message() -> dict[str, Any] | None:
+def read_content_length_message(first_line: bytes) -> dict[str, Any] | None:
     headers: dict[str, str] = {}
+    decoded_first = first_line.decode("ascii", errors="replace").strip()
+    if ":" in decoded_first:
+        key, value = decoded_first.split(":", 1)
+        headers[key.lower()] = value.strip()
     while True:
         line = sys.stdin.buffer.readline()
         if line == b"":
@@ -1069,10 +1078,25 @@ def read_message() -> dict[str, Any] | None:
     return json.loads(body.decode("utf-8"))
 
 
+def read_line_message(first_line: bytes) -> dict[str, Any]:
+    return json.loads(first_line.decode("utf-8").strip())
+
+
+def read_message() -> dict[str, Any] | None:
+    while True:
+        line = sys.stdin.buffer.readline()
+        if line == b"":
+            return None
+        if line in {b"\r\n", b"\n"}:
+            continue
+        if line.lower().startswith(b"content-length:"):
+            return read_content_length_message(line)
+        return read_line_message(line)
+
+
 def send_message(message: dict[str, Any]) -> None:
-    body = json.dumps(message, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-    header = f"Content-Length: {len(body)}\r\n\r\n".encode("ascii")
-    sys.stdout.buffer.write(header + body)
+    body = (json.dumps(message, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
+    sys.stdout.buffer.write(body)
     sys.stdout.buffer.flush()
 
 

@@ -44,6 +44,7 @@ https://github.com/Omar-origin/lab-factory/releases/tag/v0.1.0-beta.4
    ```powershell
    & "$env:LOCALAPPDATA\Programs\Lab Factory\lab-factory.exe" status
    & "$env:LOCALAPPDATA\Programs\Lab Factory\lab-factory.exe" check-runtime
+   & "$env:LOCALAPPDATA\Programs\Lab Factory\lab-factory.exe" mcp-smoke
    ```
 
 如果你安装时选择了其他目录，把命令里的路径替换成实际安装目录。
@@ -255,6 +256,14 @@ lab-factory status
 ```bash
 lab-factory check-runtime
 ```
+
+检查 MCP stdio 握手：
+
+```bash
+lab-factory mcp-smoke
+```
+
+不要用“直接运行 `lab-factory serve-mcp` 是否有输出”来判断 MCP 是否正常。`serve-mcp` 是给 MCP 客户端启动的 stdio 子进程，正常情况下只读写 MCP JSON-RPC 消息；人工终端没有发送协议消息时，它没有普通交互界面。
 
 查看 MCP 配置示例：
 

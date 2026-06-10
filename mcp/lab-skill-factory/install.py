@@ -166,7 +166,14 @@ def install_claude(args: argparse.Namespace, command: str, command_args: list[st
 
     attempts = []
     for candidate in candidates:
-        proc = subprocess.run(candidate["command"], capture_output=True, text=True, check=False)
+        proc = subprocess.run(
+            candidate["command"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
         attempt = {
             "name": candidate["name"],
             "returncode": proc.returncode,

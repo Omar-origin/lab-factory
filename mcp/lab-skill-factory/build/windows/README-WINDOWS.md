@@ -20,6 +20,7 @@ Or run commands from PowerShell:
 ```powershell
 & "$env:LOCALAPPDATA\Programs\Lab Factory\lab-factory.exe" status
 & "$env:LOCALAPPDATA\Programs\Lab Factory\lab-factory.exe" check-runtime
+& "$env:LOCALAPPDATA\Programs\Lab Factory\lab-factory.exe" mcp-smoke
 & "$env:LOCALAPPDATA\Programs\Lab Factory\lab-factory.exe" install --target codex
 & "$env:LOCALAPPDATA\Programs\Lab Factory\lab-factory.exe" install --target claude
 ```
