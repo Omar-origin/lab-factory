@@ -9,7 +9,7 @@
 下载页：
 
 ```text
-https://github.com/Omar-origin/lab-factory/releases/tag/v0.1.0-beta.4
+https://github.com/Omar-origin/lab-factory/releases/tag/v0.1.0-beta.9
 ```
 
 如果仓库是私有仓库，用户必须先拥有仓库访问权限。没有权限的用户看不到下载入口，需要你单独把压缩包发给他，或后续改成公开 Release。
@@ -28,7 +28,7 @@ https://github.com/Omar-origin/lab-factory/releases/tag/v0.1.0-beta.4
 2. 打开解压后的 `installer` 文件夹，运行：
 
    ```text
-   LabFactory-0.1.0-beta.4-Setup.exe
+   LabFactory-0.1.0-beta.9-Setup.exe
    ```
 
 3. 如果 Windows 弹出 SmartScreen，确认来源可信后选择“更多信息”再选择“仍要运行”。这是因为免费测试版暂未做代码签名。
@@ -57,13 +57,13 @@ https://github.com/Omar-origin/lab-factory/releases/tag/v0.1.0-beta.4
 
    ```bash
    mkdir -p "$HOME/.local/bin"
-   cp ~/Downloads/lab-factory-macos-arm64/lab-factory "$HOME/.local/bin/lab-factory"
+   cp ~/Downloads/lab-factory-macos-arm64/dist/macos/lab-factory "$HOME/.local/bin/lab-factory"
    chmod +x "$HOME/.local/bin/lab-factory"
    ```
 
-   如果你的解压目录不是 `~/Downloads/lab-factory-macos-arm64`，把上面的路径换成实际路径。
+   macOS 包不会包含 `LabFactory-*-Setup.exe` 或 `lab-factory.exe`，这是正常的；macOS 可执行文件名是 `lab-factory`。如果你的解压目录不是 `~/Downloads/lab-factory-macos-arm64`，把上面的路径换成实际路径。
 
-3. 如果 macOS 提示无法打开或无法验证开发者，运行：
+3. 如果 macOS 提示无法打开或无法验证开发者，或者运行时出现退出码 `137`、`killed: 9`、`Security policy would not allow process`，说明免费测试版被 Gatekeeper quarantine 拦截。确认来源可信后运行：
 
    ```bash
    xattr -dr com.apple.quarantine "$HOME/.local/bin/lab-factory"
@@ -74,6 +74,7 @@ https://github.com/Omar-origin/lab-factory/releases/tag/v0.1.0-beta.4
    ```bash
    "$HOME/.local/bin/lab-factory" status
    "$HOME/.local/bin/lab-factory" check-runtime
+   "$HOME/.local/bin/lab-factory" mcp-smoke
    ```
 
 5. 如果希望之后直接输入 `lab-factory`，把 `~/.local/bin` 加到 PATH。zsh 用户可以运行：

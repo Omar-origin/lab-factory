@@ -19,6 +19,25 @@
 - Windows 默认可能是 `%LOCALAPPDATA%\Programs\Lab Factory\lab-factory.exe`。
 - Windows 用户自选安装目录时，让用户提供实际安装目录，或让用户从开始菜单找到 `Lab Factory CLI`，右键查看文件所在位置。
 - macOS 常见路径是 `$HOME/.local/bin/lab-factory`。
+- macOS zip 里的实际二进制通常是 `dist/macos/lab-factory`，不会有 `.exe` 或 Windows 安装包。
+
+## macOS 内测处理
+
+macOS 免费测试包未做正式 Developer ID 签名和公证。部署时建议先复制到固定位置：
+
+```bash
+mkdir -p "$HOME/.local/bin"
+cp "/解压目录/lab-factory-macos-arm64/dist/macos/lab-factory" "$HOME/.local/bin/lab-factory"
+chmod +x "$HOME/.local/bin/lab-factory"
+```
+
+如果运行 `status`、`check-runtime` 或 `mcp-smoke` 时出现退出码 `137`、`killed: 9`、`Security policy would not allow process`，或 macOS 提示无法验证开发者，说明被 Gatekeeper quarantine 拦截。确认来源可信后执行：
+
+```bash
+xattr -dr com.apple.quarantine "$HOME/.local/bin/lab-factory"
+```
+
+然后重新执行部署前验证。
 
 ## 部署前验证
 

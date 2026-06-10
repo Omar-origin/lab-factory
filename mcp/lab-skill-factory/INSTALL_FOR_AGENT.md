@@ -61,19 +61,29 @@ dist\windows\lab-factory.exe
 dist/macos/lab-factory
 ```
 
-如果没有执行权限，先执行：
+macOS 包不会包含 `LabFactory-*-Setup.exe` 或 `lab-factory.exe`，这是正常的；macOS 可执行文件名是 `lab-factory`。
+
+建议先把二进制复制到固定位置：
 
 ```bash
-chmod +x "/actual/path/lab-factory"
+mkdir -p "$HOME/.local/bin"
+cp "/解压目录/lab-factory-macos-arm64/dist/macos/lab-factory" "$HOME/.local/bin/lab-factory"
+chmod +x "$HOME/.local/bin/lab-factory"
+```
+
+如果运行时出现 `Security policy would not allow process`、`killed: 9`、退出码 `137`，或 macOS 提示无法验证开发者，说明这个免费测试版二进制被 Gatekeeper quarantine 拦截。确认来源可信后，执行：
+
+```bash
+xattr -dr com.apple.quarantine "$HOME/.local/bin/lab-factory"
 ```
 
 然后运行：
 
 ```bash
-"/actual/path/lab-factory" status
-"/actual/path/lab-factory" check-runtime
-"/actual/path/lab-factory" mcp-smoke
-"/actual/path/lab-factory" install --target both
+"$HOME/.local/bin/lab-factory" status
+"$HOME/.local/bin/lab-factory" check-runtime
+"$HOME/.local/bin/lab-factory" mcp-smoke
+"$HOME/.local/bin/lab-factory" install --target both
 ```
 
 ## 授权参数
