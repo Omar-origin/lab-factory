@@ -60,6 +60,16 @@ jobs:
           ./mcp/lab-skill-factory/dist/macos/lab-factory check-runtime
           ./mcp/lab-skill-factory/dist/macos/lab-factory mcp-smoke
           python3 mcp/lab-skill-factory/scripts/smoke_mcp_stdio.py ./mcp/lab-skill-factory/dist/macos/lab-factory serve-mcp
+          install_test_dir="$(mktemp -d)"
+          install_config="$install_test_dir/codex-config.toml"
+          ./mcp/lab-skill-factory/dist/macos/lab-factory install --target codex --binary "$(pwd)/mcp/lab-skill-factory/dist/macos/lab-factory" --codex-config "$install_config"
+          grep -q "\[mcp_servers.lab-skill-factory\]" "$install_config"
+          grep -q "LAB_FACTORY_PRODUCT_ID" "$install_config"
+          if grep -q "_MEI" "$install_config"; then
+            echo "install wrote a PyInstaller temporary _MEI path"
+            cat "$install_config"
+            exit 1
+          fi
 
       - name: Smoke test Windows binary
         if: runner.os == 'Windows'
@@ -71,6 +81,21 @@ jobs:
           .\mcp\lab-skill-factory\dist\windows\lab-factory.exe check-runtime
           .\mcp\lab-skill-factory\dist\windows\lab-factory.exe mcp-smoke
           python .\mcp\lab-skill-factory\scripts\smoke_mcp_stdio.py .\mcp\lab-skill-factory\dist\windows\lab-factory.exe serve-mcp
+          $binaryPath = (Resolve-Path .\mcp\lab-skill-factory\dist\windows\lab-factory.exe).Path
+          $codexConfig = Join-Path $env:RUNNER_TEMP "lab-factory-codex-config.toml"
+          .\mcp\lab-skill-factory\dist\windows\lab-factory.exe install --target codex --binary $binaryPath --codex-config $codexConfig
+          if (-not (Select-String -Path $codexConfig -Pattern "\[mcp_servers\.lab-skill-factory\]" -Quiet)) {
+            Get-Content $codexConfig
+            throw "Codex MCP section was not written"
+          }
+          if (-not (Select-String -Path $codexConfig -Pattern "LAB_FACTORY_PRODUCT_ID" -Quiet)) {
+            Get-Content $codexConfig
+            throw "Codex MCP env was not written"
+          }
+          if (Select-String -Path $codexConfig -Pattern "_MEI" -Quiet) {
+            Get-Content $codexConfig
+            throw "install wrote a PyInstaller temporary _MEI path"
+          }
 
       - name: Smoke test Windows installer
         if: runner.os == 'Windows'
@@ -106,6 +131,20 @@ jobs:
           & $installedExe check-runtime
           & $installedExe mcp-smoke
           python .\mcp\lab-skill-factory\scripts\smoke_mcp_stdio.py $installedExe serve-mcp
+          $installedCodexConfig = Join-Path $env:RUNNER_TEMP "lab-factory-installed-codex-config.toml"
+          & $installedExe install --target codex --binary $installedExe --codex-config $installedCodexConfig
+          if (-not (Select-String -Path $installedCodexConfig -Pattern "\[mcp_servers\.lab-skill-factory\]" -Quiet)) {
+            Get-Content $installedCodexConfig
+            throw "Installed exe did not write Codex MCP section"
+          }
+          if (-not (Select-String -Path $installedCodexConfig -Pattern "LAB_FACTORY_PRODUCT_ID" -Quiet)) {
+            Get-Content $installedCodexConfig
+            throw "Installed exe did not write Codex MCP env"
+          }
+          if (Select-String -Path $installedCodexConfig -Pattern "_MEI" -Quiet) {
+            Get-Content $installedCodexConfig
+            throw "installed exe wrote a PyInstaller temporary _MEI path"
+          }
           $uninstaller = Join-Path $installDir "unins000.exe"
           if (Test-Path $uninstaller) {
             & $uninstaller /VERYSILENT /SUPPRESSMSGBOXES /NORESTART

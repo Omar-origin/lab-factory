@@ -17,6 +17,7 @@ SERVER_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SERVER_DIR.parents[1]
 DEFAULT_SKILL_ROOT = REPO_ROOT / "skills" / "lab-skill-factory"
 DEFAULT_LICENSE_DB = SERVER_DIR / "activation_codes.json"
+DEFAULT_CODEX_CONFIG = Path.home() / ".codex" / "config.toml"
 
 
 def server_command(binary: str | None) -> tuple[str, list[str]]:
@@ -26,10 +27,11 @@ def server_command(binary: str | None) -> tuple[str, list[str]]:
 
 
 def env_map(args: argparse.Namespace) -> dict[str, str]:
-    env = {
-        "LAB_FACTORY_SKILL_ROOT": str(Path(args.skill_root).expanduser().resolve()),
-        "LAB_FACTORY_WORKSPACE_ROOT": str(Path(args.workspace_root).expanduser().resolve()),
-    }
+    env = {}
+    if getattr(args, "skill_root", None):
+        env["LAB_FACTORY_SKILL_ROOT"] = str(Path(args.skill_root).expanduser().resolve())
+    if getattr(args, "workspace_root", None):
+        env["LAB_FACTORY_WORKSPACE_ROOT"] = str(Path(args.workspace_root).expanduser().resolve())
     if args.auth_url:
         env["LAB_FACTORY_AUTH_URL"] = args.auth_url.rstrip("/")
     else:
@@ -68,7 +70,7 @@ def remove_existing_codex_section(text: str) -> str:
 
 
 def install_codex(args: argparse.Namespace, command: str, command_args: list[str], env: dict[str, str]) -> Path:
-    config_path = Path(args.codex_config).expanduser()
+    config_path = Path(args.codex_config or DEFAULT_CODEX_CONFIG).expanduser()
     config_path.parent.mkdir(parents=True, exist_ok=True)
     existing = config_path.read_text(encoding="utf-8", errors="replace") if config_path.exists() else ""
     clean = remove_existing_codex_section(existing)
@@ -210,7 +212,7 @@ def main() -> int:
     parser.add_argument("--license-db", default=str(DEFAULT_LICENSE_DB))
     parser.add_argument("--auth-url", help="Remote activation service URL. If set, local license DB is not used.")
     parser.add_argument("--product-id", default="lab-skill-factory-beta")
-    parser.add_argument("--codex-config", default=str(Path.home() / ".codex" / "config.toml"))
+    parser.add_argument("--codex-config", default=str(DEFAULT_CODEX_CONFIG))
     parser.add_argument("--claude-scope", choices=["local", "user", "project"], default="user")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
