@@ -75,10 +75,22 @@ jobs:
           LAB_FACTORY_DEV_ALLOW: "1"
         run: |
           $installer = Get-ChildItem .\mcp\lab-skill-factory\dist\windows\installer\*.exe | Select-Object -First 1
-          & $installer.FullName /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
-          & "$env:LOCALAPPDATA\Programs\Lab Factory\lab-factory.exe" status
-          & "$env:LOCALAPPDATA\Programs\Lab Factory\lab-factory.exe" check-runtime
-          $uninstaller = "$env:LOCALAPPDATA\Programs\Lab Factory\unins000.exe"
+          $installDir = Join-Path $env:RUNNER_TEMP "lab-factory-install"
+          $setupLog = Join-Path $env:RUNNER_TEMP "lab-factory-install.log"
+          & $installer.FullName /VERYSILENT /SUPPRESSMSGBOXES /NORESTART "/DIR=$installDir" "/LOG=$setupLog"
+          if ($LASTEXITCODE -ne 0) {
+            if (Test-Path $setupLog) { Get-Content $setupLog }
+            exit $LASTEXITCODE
+          }
+          $installedExe = Join-Path $installDir "lab-factory.exe"
+          if (-not (Test-Path $installedExe)) {
+            if (Test-Path $setupLog) { Get-Content $setupLog }
+            if (Test-Path $installDir) { Get-ChildItem $installDir -Recurse | Format-Table -AutoSize }
+            throw "Installed executable not found: $installedExe"
+          }
+          & $installedExe status
+          & $installedExe check-runtime
+          $uninstaller = Join-Path $installDir "unins000.exe"
           if (Test-Path $uninstaller) {
             & $uninstaller /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
           }
