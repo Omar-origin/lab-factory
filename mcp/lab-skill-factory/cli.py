@@ -137,6 +137,7 @@ def main() -> int:
     install.add_argument("--auth-url")
     install.add_argument("--product-id", default="lab-skill-factory-beta")
     install.add_argument("--codex-config")
+    install.add_argument("--claude-scope", choices=["local", "user", "project"], default="user")
     install.add_argument("--dry-run", action="store_true")
 
     inspect = sub.add_parser("inspect", help="Inspect lab materials and infer roles.")

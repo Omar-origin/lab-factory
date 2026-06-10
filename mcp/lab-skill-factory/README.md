@@ -105,6 +105,8 @@ lab-factory serve-mcp
 - `client-configs/claude-code.example.json`
 - `client-configs/codex.example.toml`
 - `client-configs/generic-stdio.example.json`
+- `docs/AGENT_MCP_DEPLOYMENT.md`：给 Claude Code/Codex 这类 agent 读取的部署说明。
+- `docs/WINDOWS_MAC_USAGE.md`：给 Windows/macOS 测试用户读取的使用说明。
 
 也可以连接 MCP 后调用 `lab_factory_export_client_config`，传入 `claude_code`、`codex` 或 `generic_stdio`。
 
@@ -132,6 +134,8 @@ python3 /Users/omar/Documents/New\ project/mcp/lab-skill-factory/cli.py install 
 ```
 
 `--target` 可以是 `claude`、`codex` 或 `both`。Claude Code 依赖本机 `claude` CLI；Codex 默认写入 `~/.codex/config.toml`，可用 `--codex-config` 指定路径。
+
+Claude Code 安装默认使用 `--claude-scope user`，让 MCP 对该用户的所有项目生效。需要只对当前项目生效时，可传入 `--claude-scope local`。为了兼容不同 Claude Code 版本，安装器会优先使用 `claude mcp add --scope user -e KEY=value -- lab-skill-factory <command> serve-mcp` 的格式；如果失败，会自动尝试几种旧格式，并在全部失败时输出可手动粘贴的 MCP 配置。
 
 ## 用户可编辑专属 skill
 

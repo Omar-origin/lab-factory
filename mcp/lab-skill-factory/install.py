@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 
 SERVER_DIR = Path(__file__).resolve().parent
@@ -76,35 +77,120 @@ def install_codex(args: argparse.Namespace, command: str, command_args: list[str
     return config_path
 
 
+def claude_manual_config(command: str, command_args: list[str], env: dict[str, str]) -> dict[str, Any]:
+    return {
+        "mcpServers": {
+            "lab-skill-factory": {
+                "command": command,
+                "args": command_args,
+                "env": env,
+            }
+        }
+    }
+
+
+def claude_env_args(env: dict[str, str], flag: str) -> list[str]:
+    args: list[str] = []
+    for key, value in env.items():
+        args.extend([flag, f"{key}={value}"])
+    return args
+
+
+def claude_command_candidates(
+    claude: str,
+    command: str,
+    command_args: list[str],
+    env: dict[str, str],
+    scope: str,
+) -> list[dict[str, Any]]:
+    # Claude Code's `mcp add` syntax has changed in small ways across versions.
+    # Current builds make `-e/--env` variadic, so `--` must terminate option
+    # parsing before the server name. Keep fallbacks for older accepted shapes.
+    base = [claude, "mcp", "add"]
+    server = ["lab-skill-factory", command, *command_args]
+    legacy_separator_server = ["lab-skill-factory", "--", command, *command_args]
+    return [
+        {
+            "name": "scope-short-env-option-terminator",
+            "command": [*base, "--scope", scope, *claude_env_args(env, "-e"), "--", *server],
+        },
+        {
+            "name": "scope-long-env-option-terminator",
+            "command": [
+                *base,
+                "--scope",
+                scope,
+                *claude_env_args(env, "--env"),
+                "--",
+                *server,
+            ],
+        },
+        {
+            "name": "short-env-option-terminator-no-scope",
+            "command": [*base, *claude_env_args(env, "-e"), "--", *server],
+        },
+        {
+            "name": "short-env-after-server",
+            "command": [*base, "--scope", scope, *server, *claude_env_args(env, "-e")],
+        },
+        {
+            "name": "legacy-long-env-command-separator",
+            "command": [
+                *base,
+                "--transport",
+                "stdio",
+                *claude_env_args(env, "--env"),
+                *legacy_separator_server,
+            ],
+        },
+    ]
+
+
 def install_claude(args: argparse.Namespace, command: str, command_args: list[str], env: dict[str, str]) -> dict:
     claude = shutil.which("claude")
     if not claude:
         return {
             "ok": False,
             "error": "claude CLI not found on PATH",
-            "manual_config": {
-                "mcpServers": {
-                    "lab-skill-factory": {
-                        "command": command,
-                        "args": command_args,
-                        "env": env,
-                    }
-                }
-            },
+            "manual_config": claude_manual_config(command, command_args, env),
         }
-    cmd = [claude, "mcp", "add", "--transport", "stdio"]
-    for key, value in env.items():
-        cmd.extend(["--env", f"{key}={value}"])
-    cmd.extend(["lab-skill-factory", "--", command, *command_args])
+    candidates = claude_command_candidates(claude, command, command_args, env, args.claude_scope)
     if args.dry_run:
-        return {"ok": True, "dry_run": True, "command": cmd}
-    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        return {
+            "ok": True,
+            "dry_run": True,
+            "preferred_command": candidates[0]["command"],
+            "fallback_commands": [candidate["command"] for candidate in candidates[1:]],
+            "manual_config": claude_manual_config(command, command_args, env),
+        }
+
+    attempts = []
+    for candidate in candidates:
+        proc = subprocess.run(candidate["command"], capture_output=True, text=True, check=False)
+        attempt = {
+            "name": candidate["name"],
+            "returncode": proc.returncode,
+            "stdout": proc.stdout.strip(),
+            "stderr": proc.stderr.strip(),
+            "command": candidate["command"],
+        }
+        attempts.append(attempt)
+        if proc.returncode == 0:
+            return {
+                "ok": True,
+                "selected": candidate["name"],
+                "returncode": proc.returncode,
+                "stdout": proc.stdout.strip(),
+                "stderr": proc.stderr.strip(),
+                "command": candidate["command"],
+                "attempts": attempts,
+            }
+
     return {
-        "ok": proc.returncode == 0,
-        "returncode": proc.returncode,
-        "stdout": proc.stdout.strip(),
-        "stderr": proc.stderr.strip(),
-        "command": cmd,
+        "ok": False,
+        "error": "all claude mcp add command variants failed",
+        "attempts": attempts,
+        "manual_config": claude_manual_config(command, command_args, env),
     }
 
 
@@ -118,6 +204,7 @@ def main() -> int:
     parser.add_argument("--auth-url", help="Remote activation service URL. If set, local license DB is not used.")
     parser.add_argument("--product-id", default="lab-skill-factory-beta")
     parser.add_argument("--codex-config", default=str(Path.home() / ".codex" / "config.toml"))
+    parser.add_argument("--claude-scope", choices=["local", "user", "project"], default="user")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 

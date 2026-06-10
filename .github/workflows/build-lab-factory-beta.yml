@@ -88,6 +88,11 @@ jobs:
             if (Test-Path $installDir) { Get-ChildItem $installDir -Recurse | Format-Table -AutoSize }
             throw "Installed executable not found: $installedExe"
           }
+          $agentGuide = Join-Path $installDir "docs\AGENT_MCP_DEPLOYMENT.md"
+          if (-not (Test-Path $agentGuide)) {
+            if (Test-Path $installDir) { Get-ChildItem $installDir -Recurse | Format-Table -AutoSize }
+            throw "Agent deployment guide not found: $agentGuide"
+          }
           & $installedExe status
           & $installedExe check-runtime
           $uninstaller = Join-Path $installDir "unins000.exe"
@@ -100,7 +105,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: mcp/lab-skill-factory/dist/macos/lab-factory
+          path: |
+            mcp/lab-skill-factory/dist/macos/lab-factory
+            mcp/lab-skill-factory/docs/*.md
+            mcp/lab-skill-factory/README.md
 
       - name: Upload Windows artifact
         if: runner.os == 'Windows'
@@ -110,3 +118,5 @@ jobs:
           path: |
             mcp/lab-skill-factory/dist/windows/lab-factory.exe
             mcp/lab-skill-factory/dist/windows/installer/*.exe
+            mcp/lab-skill-factory/docs/*.md
+            mcp/lab-skill-factory/README.md
