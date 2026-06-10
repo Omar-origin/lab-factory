@@ -42,6 +42,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Files]
 Source: "{#SourceDir}\{#AppExeName}"; DestDir: "{app}"; DestName: "lab-factory.exe"; Flags: ignoreversion
 Source: "{#McpDir}\README.md"; DestDir: "{app}"; DestName: "README.md"; Flags: ignoreversion
+Source: "{#McpDir}\INSTALL_FOR_AGENT.md"; DestDir: "{app}"; DestName: "INSTALL_FOR_AGENT.md"; Flags: ignoreversion
 Source: "{#McpDir}\build\windows\README-WINDOWS.md"; DestDir: "{app}"; DestName: "README-WINDOWS.md"; Flags: ignoreversion
 Source: "{#McpDir}\client-configs\*"; DestDir: "{app}\client-configs"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#McpDir}\docs\*"; DestDir: "{app}\docs"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -52,6 +53,7 @@ Name: "{group}\Install Codex MCP Config"; Filename: "{cmd}"; Parameters: "/K ""{
 Name: "{group}\Install Claude Code MCP Config"; Filename: "{cmd}"; Parameters: "/K ""{app}\lab-factory.exe"" install --target claude"; WorkingDir: "{app}"
 Name: "{group}\Lab Factory Windows README"; Filename: "{app}\README-WINDOWS.md"
 Name: "{group}\Lab Factory README"; Filename: "{app}\README.md"
+Name: "{group}\Lab Factory Agent Quick Install"; Filename: "{app}\INSTALL_FOR_AGENT.md"
 Name: "{group}\Lab Factory Agent Deployment Guide"; Filename: "{app}\docs\AGENT_MCP_DEPLOYMENT.md"
 Name: "{group}\Lab Factory Windows/macOS Usage Guide"; Filename: "{app}\docs\WINDOWS_MAC_USAGE.md"
 

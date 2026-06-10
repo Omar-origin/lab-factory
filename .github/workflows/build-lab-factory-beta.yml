@@ -97,6 +97,11 @@ jobs:
             if (Test-Path $installDir) { Get-ChildItem $installDir -Recurse | Format-Table -AutoSize }
             throw "Agent deployment guide not found: $agentGuide"
           }
+          $agentQuickInstall = Join-Path $installDir "INSTALL_FOR_AGENT.md"
+          if (-not (Test-Path $agentQuickInstall)) {
+            if (Test-Path $installDir) { Get-ChildItem $installDir -Recurse | Format-Table -AutoSize }
+            throw "Agent quick install guide not found: $agentQuickInstall"
+          }
           & $installedExe status
           & $installedExe check-runtime
           & $installedExe mcp-smoke
@@ -113,6 +118,7 @@ jobs:
           name: ${{ matrix.artifact }}
           path: |
             mcp/lab-skill-factory/dist/macos/lab-factory
+            mcp/lab-skill-factory/INSTALL_FOR_AGENT.md
             mcp/lab-skill-factory/docs/*.md
             mcp/lab-skill-factory/README.md
 
@@ -124,5 +130,6 @@ jobs:
           path: |
             mcp/lab-skill-factory/dist/windows/lab-factory.exe
             mcp/lab-skill-factory/dist/windows/installer/*.exe
+            mcp/lab-skill-factory/INSTALL_FOR_AGENT.md
             mcp/lab-skill-factory/docs/*.md
             mcp/lab-skill-factory/README.md

@@ -6,6 +6,8 @@
 - 一个标准 stdio MCP 接口：`lab-factory serve-mcp`。
 - 一套用户可见、可编辑、可迭代的专属科目 skill 生成流程。
 
+如果你是 Claude Code、Codex 或其他 agent，用户让你“部署这个压缩包/安装包”时，先阅读根目录的 `INSTALL_FOR_AGENT.md`，再执行部署。不要在部署阶段开始写实验报告。
+
 核心工厂逻辑负责材料清点、DOCX/MD 解析、模板保全、spec 校验、专属 skill 脚手架、fill-map 校验和受控写回；专属 skill 负责某个用户、某门课、某类模板的实际实验报告流程。
 
 ## 当前能力
@@ -107,6 +109,7 @@ lab-factory serve-mcp
 - `client-configs/claude-code.example.json`
 - `client-configs/codex.example.toml`
 - `client-configs/generic-stdio.example.json`
+- `INSTALL_FOR_AGENT.md`：给 Claude Code/Codex 读取的最短部署入口。
 - `docs/AGENT_MCP_DEPLOYMENT.md`：给 Claude Code/Codex 这类 agent 读取的部署说明。
 - `docs/WINDOWS_MAC_USAGE.md`：给 Windows/macOS 测试用户读取的使用说明。
 

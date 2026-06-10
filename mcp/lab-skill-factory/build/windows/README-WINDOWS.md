@@ -8,12 +8,15 @@ Lab Factory is installed per user by default:
 
 The installer does not automatically modify Claude Code, Codex, or your system PATH.
 
+If you want Claude Code or Codex to deploy this package for you, give it this folder or zip path and tell it to read `INSTALL_FOR_AGENT.md` first.
+
 Use the Start Menu shortcuts:
 
 - `Lab Factory CLI`
 - `Install Codex MCP Config`
 - `Install Claude Code MCP Config`
 - `Lab Factory README`
+- `Lab Factory Agent Quick Install`
 
 Or run commands from PowerShell:
 
