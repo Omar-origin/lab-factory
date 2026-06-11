@@ -8,7 +8,7 @@
 2. 找到 `lab-factory` 或 `lab-factory.exe`。
 3. 先运行基础自检和 MCP 握手测试。
 4. 调用内置 `install` 命令接入 Claude Code、Codex，或两个都接入。
-5. 如果用户有激活码，帮助用户激活。
+5. 如果用户有激活码和授权服务地址，帮助用户激活；如果两者都没有，使用免费内测 `--dev-allow`。
 6. 让用户重启 Claude Code/Codex，并验证 MCP 能被调用。
 
 更完整的部署说明见 `docs/AGENT_MCP_DEPLOYMENT.md`。
@@ -53,6 +53,12 @@ dist\windows\lab-factory.exe
 & "C:\实际路径\lab-factory.exe" install --target both
 ```
 
+如果用户没有激活码和授权服务地址，免费内测必须改为：
+
+```powershell
+& "C:\实际路径\lab-factory.exe" install --target both --dev-allow
+```
+
 ## macOS 快速流程
 
 解压后优先找：
@@ -86,6 +92,12 @@ xattr -dr com.apple.quarantine "$HOME/.local/bin/lab-factory"
 "$HOME/.local/bin/lab-factory" install --target both
 ```
 
+如果用户没有激活码和授权服务地址，免费内测必须改为：
+
+```bash
+"$HOME/.local/bin/lab-factory" install --target both --dev-allow
+```
+
 ## 授权参数
 
 如果用户提供了授权服务地址，安装时加上：
@@ -103,8 +115,12 @@ xattr -dr com.apple.quarantine "$HOME/.local/bin/lab-factory"
 如果用户提供了激活码，运行：
 
 ```bash
-"/actual/path/lab-factory" activate "激活码"
+"/actual/path/lab-factory" activate "激活码" --auth-url "https://授权服务地址"
 ```
+
+激活码模式必须同时有授权服务地址。只有激活码但没有授权服务地址时，不要反复尝试本地激活；当前发行包不包含用户激活码数据库。
+
+Claude Code 的项目级同名 MCP 配置会覆盖用户级配置，而不是逐项合并。Lab Factory 安装器会读取当前有效的同名配置并合并 `env`；不要手工创建一个缺少授权变量的项目级同名 server。
 
 ## 不要这样判断 MCP
 

@@ -9,6 +9,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,8 @@ REPO_ROOT = SERVER_DIR.parents[1]
 DEFAULT_SKILL_ROOT = REPO_ROOT / "skills" / "lab-skill-factory"
 DEFAULT_LICENSE_DB = SERVER_DIR / "activation_codes.json"
 DEFAULT_CODEX_CONFIG = Path.home() / ".codex" / "config.toml"
+DEFAULT_CLAUDE_CONFIG = Path.home() / ".claude.json"
+SERVER_NAME = "lab-skill-factory"
 
 
 def server_command(binary: str | None) -> tuple[str, list[str]]:
@@ -38,18 +41,91 @@ def env_map(args: argparse.Namespace) -> dict[str, str]:
         env["LAB_FACTORY_LICENSE_DB"] = str(Path(args.license_db).expanduser().resolve())
     if args.product_id:
         env["LAB_FACTORY_PRODUCT_ID"] = args.product_id
+    if getattr(args, "dev_allow", False) or os.environ.get("LAB_FACTORY_DEV_ALLOW") == "1":
+        env["LAB_FACTORY_DEV_ALLOW"] = "1"
     return env
+
+
+def merge_env(existing: dict[str, Any], requested: dict[str, str]) -> dict[str, str]:
+    merged = {str(key): str(value) for key, value in existing.items() if isinstance(value, (str, int, float, bool))}
+    merged.update(requested)
+    return merged
+
+
+def read_codex_env(config_path: Path) -> dict[str, str]:
+    if not config_path.exists():
+        return {}
+    try:
+        data = tomllib.loads(config_path.read_text(encoding="utf-8", errors="replace"))
+    except (tomllib.TOMLDecodeError, OSError):
+        return {}
+    servers = data.get("mcp_servers")
+    if not isinstance(servers, dict):
+        return {}
+    server = servers.get(SERVER_NAME)
+    if not isinstance(server, dict):
+        return {}
+    env = server.get("env")
+    return merge_env(env if isinstance(env, dict) else {}, {})
+
+
+def read_json(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def server_env_from_config(data: dict[str, Any]) -> dict[str, str]:
+    servers = data.get("mcpServers")
+    if not isinstance(servers, dict):
+        return {}
+    server = servers.get(SERVER_NAME)
+    if not isinstance(server, dict):
+        return {}
+    env = server.get("env")
+    return merge_env(env if isinstance(env, dict) else {}, {})
+
+
+def read_claude_env(scope: str, *, cwd: Path | None = None, home: Path | None = None) -> dict[str, str]:
+    cwd = (cwd or Path.cwd()).resolve()
+    home = home or Path.home()
+    config = read_json(home / ".claude.json")
+    merged = server_env_from_config(config)
+
+    if scope in {"local", "project"}:
+        projects = config.get("projects")
+        if isinstance(projects, dict):
+            project = projects.get(str(cwd))
+            if isinstance(project, dict):
+                merged = merge_env(merged, server_env_from_config(project))
+
+    if scope == "project":
+        merged = merge_env(merged, server_env_from_config(read_json(cwd / ".mcp.json")))
+    return merged
+
+
+def effective_codex_env(args: argparse.Namespace, requested: dict[str, str]) -> dict[str, str]:
+    config_path = Path(args.codex_config or DEFAULT_CODEX_CONFIG).expanduser()
+    return merge_env(read_codex_env(config_path), requested)
+
+
+def effective_claude_env(args: argparse.Namespace, requested: dict[str, str]) -> dict[str, str]:
+    return merge_env(read_claude_env(args.claude_scope), requested)
 
 
 def codex_config_snippet(command: str, command_args: list[str], env: dict[str, str]) -> str:
     lines = [
         "[mcp_servers.lab-skill-factory]",
-        f'command = "{command}"',
+        f"command = {json.dumps(command, ensure_ascii=False)}",
         f"args = {json.dumps(command_args, ensure_ascii=False)}",
         "",
         "[mcp_servers.lab-skill-factory.env]",
     ]
-    lines.extend(f'{key} = "{value}"' for key, value in env.items())
+    lines.extend(f"{key} = {json.dumps(value, ensure_ascii=False)}" for key, value in env.items())
     return "\n".join(lines) + "\n"
 
 
@@ -214,23 +290,35 @@ def main() -> int:
     parser.add_argument("--product-id", default="lab-skill-factory-beta")
     parser.add_argument("--codex-config", default=str(DEFAULT_CODEX_CONFIG))
     parser.add_argument("--claude-scope", choices=["local", "user", "project"], default="user")
+    parser.add_argument("--dev-allow", action="store_true", help="Enable free beta access without an activation server.")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
     command, command_args = server_command(args.binary)
-    env = env_map(args)
-    result: dict[str, object] = {"ok": True, "command": command, "args": command_args, "env": env}
+    requested_env = env_map(args)
+    result: dict[str, object] = {
+        "ok": True,
+        "command": command,
+        "args": command_args,
+        "requested_env": requested_env,
+    }
 
     if args.target in {"codex", "both"}:
-        snippet = codex_config_snippet(command, command_args, env)
+        codex_env = effective_codex_env(args, requested_env)
+        snippet = codex_config_snippet(command, command_args, codex_env)
         if args.dry_run:
-            result["codex"] = {"ok": True, "dry_run": True, "config": snippet}
+            result["codex"] = {"ok": True, "dry_run": True, "config": snippet, "env": codex_env}
         else:
-            path = install_codex(args, command, command_args, env)
-            result["codex"] = {"ok": True, "config_path": str(path)}
+            path = install_codex(args, command, command_args, codex_env)
+            result["codex"] = {"ok": True, "config_path": str(path), "env": codex_env}
 
     if args.target in {"claude", "both"}:
-        result["claude"] = install_claude(args, command, command_args, env)
+        claude_env = effective_claude_env(args, requested_env)
+        result["claude"] = install_claude(args, command, command_args, claude_env)
+        result["claude"]["env"] = claude_env
+
+    target_results = [value for key, value in result.items() if key in {"codex", "claude"} and isinstance(value, dict)]
+    result["ok"] = all(value.get("ok") is True for value in target_results)
 
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if result.get("ok") else 1

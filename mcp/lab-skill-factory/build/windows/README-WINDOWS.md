@@ -13,10 +13,11 @@ If you want Claude Code or Codex to deploy this package for you, give it this fo
 Use the Start Menu shortcuts:
 
 - `Lab Factory CLI`
-- `Install Codex MCP Config`
-- `Install Claude Code MCP Config`
+- `Install Codex MCP Config (Free Beta)`
+- `Install Claude Code MCP Config (Free Beta)`
 - `Lab Factory README`
 - `Lab Factory Agent Quick Install`
+- `Lab Factory User Guide`
 
 Or run commands from PowerShell:
 
@@ -24,14 +25,14 @@ Or run commands from PowerShell:
 & "$env:LOCALAPPDATA\Programs\Lab Factory\lab-factory.exe" status
 & "$env:LOCALAPPDATA\Programs\Lab Factory\lab-factory.exe" check-runtime
 & "$env:LOCALAPPDATA\Programs\Lab Factory\lab-factory.exe" mcp-smoke
-& "$env:LOCALAPPDATA\Programs\Lab Factory\lab-factory.exe" install --target codex
-& "$env:LOCALAPPDATA\Programs\Lab Factory\lab-factory.exe" install --target claude
+& "$env:LOCALAPPDATA\Programs\Lab Factory\lab-factory.exe" install --target codex --dev-allow
+& "$env:LOCALAPPDATA\Programs\Lab Factory\lab-factory.exe" install --target claude --dev-allow
 ```
 
 For remote beta activation:
 
 ```powershell
-& "$env:LOCALAPPDATA\Programs\Lab Factory\lab-factory.exe" activate <activation-code>
+& "$env:LOCALAPPDATA\Programs\Lab Factory\lab-factory.exe" activate <activation-code> --auth-url "https://your-auth-service.example"
 ```
 
 For MCP clients, the server command is:

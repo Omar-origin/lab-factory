@@ -50,22 +50,33 @@ def call_tool(handler: Callable[[dict[str, Any]], dict[str, Any]], args: dict[st
 def run_install(args: argparse.Namespace) -> int:
     binary = args.binary or (sys.executable if server.FROZEN else None)
     command, command_args = installer.server_command(binary)
-    env = installer.env_map(args)
-    result: dict[str, Any] = {"ok": True, "command": command, "args": command_args, "env": env}
+    requested_env = installer.env_map(args)
+    result: dict[str, Any] = {
+        "ok": True,
+        "command": command,
+        "args": command_args,
+        "requested_env": requested_env,
+    }
 
     if args.target in {"codex", "both"}:
-        snippet = installer.codex_config_snippet(command, command_args, env)
+        codex_env = installer.effective_codex_env(args, requested_env)
+        snippet = installer.codex_config_snippet(command, command_args, codex_env)
         if args.dry_run:
-            result["codex"] = {"ok": True, "dry_run": True, "config": snippet}
+            result["codex"] = {"ok": True, "dry_run": True, "config": snippet, "env": codex_env}
         else:
-            path = installer.install_codex(args, command, command_args, env)
-            result["codex"] = {"ok": True, "config_path": str(path)}
+            path = installer.install_codex(args, command, command_args, codex_env)
+            result["codex"] = {"ok": True, "config_path": str(path), "env": codex_env}
 
     if args.target in {"claude", "both"}:
-        result["claude"] = installer.install_claude(args, command, command_args, env)
+        claude_env = installer.effective_claude_env(args, requested_env)
+        result["claude"] = installer.install_claude(args, command, command_args, claude_env)
+        result["claude"]["env"] = claude_env
+
+    target_results = [value for key, value in result.items() if key in {"codex", "claude"} and isinstance(value, dict)]
+    result["ok"] = all(value.get("ok") is True for value in target_results)
 
     print_json(result)
-    return 0 if result.get("ok", True) is not False else 1
+    return 0 if result["ok"] else 1
 
 
 def run_beta_tests(_: argparse.Namespace) -> int:
@@ -198,6 +209,9 @@ def main() -> int:
     activate = sub.add_parser("activate", help="Activate with a beta activation code.")
     activate.add_argument("activation_code")
     activate.add_argument("--customer-id")
+    activate.add_argument("--auth-url")
+    activate.add_argument("--product-id")
+    activate.add_argument("--license-file")
 
     export_config = sub.add_parser("export-config", help="Export MCP client config.")
     export_config.add_argument("--client", choices=["claude_code", "codex", "generic_stdio"], default="generic_stdio")
@@ -212,6 +226,7 @@ def main() -> int:
     install.add_argument("--product-id", default="lab-skill-factory-beta")
     install.add_argument("--codex-config", default=str(installer.DEFAULT_CODEX_CONFIG))
     install.add_argument("--claude-scope", choices=["local", "user", "project"], default="user")
+    install.add_argument("--dev-allow", action="store_true", help="Enable free beta access without an activation server.")
     install.add_argument("--dry-run", action="store_true")
 
     inspect = sub.add_parser("inspect", help="Inspect lab materials and infer roles.")
@@ -255,6 +270,12 @@ def main() -> int:
     if args.command == "mcp-smoke":
         return run_mcp_smoke(args)
     if args.command == "activate":
+        if args.auth_url:
+            os.environ["LAB_FACTORY_AUTH_URL"] = args.auth_url.rstrip("/")
+        if args.product_id:
+            os.environ["LAB_FACTORY_PRODUCT_ID"] = args.product_id
+        if args.license_file:
+            os.environ["LAB_FACTORY_LICENSE_FILE"] = str(Path(args.license_file).expanduser().resolve())
         return call_tool(
             server.tool_activate,
             {"activation_code": args.activation_code, "customer_id": args.customer_id},

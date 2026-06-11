@@ -110,8 +110,10 @@ lab-factory serve-mcp
 - `client-configs/codex.example.toml`
 - `client-configs/generic-stdio.example.json`
 - `INSTALL_FOR_AGENT.md`：给 Claude Code/Codex 读取的最短部署入口。
+- `USER_GUIDE.md`：给普通测试用户看的部署、激活和使用说明。
 - `docs/AGENT_MCP_DEPLOYMENT.md`：给 Claude Code/Codex 这类 agent 读取的部署说明。
 - `docs/WINDOWS_MAC_USAGE.md`：给 Windows/macOS 测试用户读取的使用说明。
+- `docs/REMOTE_AUTH_DEPLOYMENT.md`：远程激活码服务的部署与商业化改造方案。
 
 也可以连接 MCP 后调用 `lab_factory_export_client_config`，传入 `claude_code`、`codex` 或 `generic_stdio`。
 
@@ -120,14 +122,19 @@ lab-factory serve-mcp
 源码内测安装：
 
 ```bash
-python3 /Users/omar/Documents/New\ project/mcp/lab-skill-factory/cli.py install --target both
+python3 /Users/omar/Documents/New\ project/mcp/lab-skill-factory/cli.py install --target both --dev-allow
 ```
 
-二进制内测安装：
+二进制免费内测安装：
 
 ```bash
-/path/to/lab-factory install \
-  --target both \
+/path/to/lab-factory install --target both --dev-allow
+```
+
+远程激活模式安装：
+
+```bash
+/path/to/lab-factory install --target both \
   --auth-url https://your-domain.example \
   --product-id lab-skill-factory-beta
 ```
@@ -230,11 +237,11 @@ mcp\lab-skill-factory\dist\windows\installer\LabFactory-0.1.0-beta-Setup.exe
 安装包是每用户安装，默认安装到 `%LOCALAPPDATA%\Programs\Lab Factory`，不需要管理员权限。安装器只安装 `lab-factory.exe`、README 和客户端配置示例，并创建开始菜单入口；不会自动修改 Claude Code 或 Codex 配置。用户安装后需要明确运行：
 
 ```powershell
-& "$env:LOCALAPPDATA\Programs\Lab Factory\lab-factory.exe" install --target codex
-& "$env:LOCALAPPDATA\Programs\Lab Factory\lab-factory.exe" install --target claude
+& "$env:LOCALAPPDATA\Programs\Lab Factory\lab-factory.exe" install --target codex --dev-allow
+& "$env:LOCALAPPDATA\Programs\Lab Factory\lab-factory.exe" install --target claude --dev-allow
 ```
 
-也可以直接从开始菜单打开 `Install Codex MCP Config` 或 `Install Claude Code MCP Config` 快捷方式。当前 beta 安装器不会自动修改用户 PATH。
+也可以直接从开始菜单打开 `Install Codex MCP Config (Free Beta)` 或 `Install Claude Code MCP Config (Free Beta)` 快捷方式。当前 beta 安装器不会自动修改用户 PATH。
 
 仓库内提供 GitHub Actions workflow：`.github/workflows/build-lab-factory-beta.yml`，会在 macOS runner 和 Windows runner 分别构建并上传 artifact。Windows artifact 会同时包含 `lab-factory.exe` 和 Inno Setup 安装包。
 

@@ -266,6 +266,22 @@ def activation_status() -> dict[str, Any]:
 
     db = load_activation_db()
     if not license_data:
+        if not db.get("exists", False):
+            return {
+                "activated": False,
+                "mode": "authorization_unconfigured",
+                "license_file": str(license_file_path()),
+                "activation_db": db.get("path"),
+                "activation_db_exists": False,
+                "message": (
+                    "当前没有可用的授权方式：未设置 LAB_FACTORY_AUTH_URL，"
+                    "并且本地 activation_codes.json 不存在。"
+                ),
+                "next_steps": [
+                    "免费内测：重新运行 install 并加上 --dev-allow。",
+                    "激活码模式：重新运行 install --auth-url <授权服务地址>，再执行 activate <激活码> --auth-url <授权服务地址>。",
+                ],
+            }
         return {
             "activated": False,
             "mode": "local_hash_allowlist",
@@ -309,10 +325,11 @@ def require_activation() -> None:
     status = activation_status()
     if status.get("activated"):
         return
-    raise ToolError(
-        f"{status.get('message', '工具尚未激活。')} 下一步：先调用 lab_factory_activate；"
-        "如果你是开发者，请创建 activation_codes.json 或在开发环境临时设置 LAB_FACTORY_DEV_ALLOW=1。"
+    next_steps = status.get("next_steps")
+    guidance = "；".join(str(item) for item in next_steps) if isinstance(next_steps, list) else (
+        "先调用 lab_factory_activate；开发测试可使用 install --dev-allow。"
     )
+    raise ToolError(f"{status.get('message', '工具尚未激活。')} 下一步：{guidance}")
 
 
 def run_skill_script(
@@ -476,10 +493,16 @@ def client_command_args() -> tuple[str, list[str]]:
 
 def build_client_config(client: str) -> dict[str, Any]:
     command, args = client_command_args()
-    env = {
-        "LAB_FACTORY_SKILL_ROOT": str(skill_root()),
-        "LAB_FACTORY_LICENSE_DB": str(license_db_path()),
-    }
+    env = {}
+    if not FROZEN or os.environ.get("LAB_FACTORY_SKILL_ROOT"):
+        env["LAB_FACTORY_SKILL_ROOT"] = str(skill_root())
+    if auth_url():
+        env["LAB_FACTORY_AUTH_URL"] = str(auth_url())
+    else:
+        env["LAB_FACTORY_LICENSE_DB"] = str(license_db_path())
+    env["LAB_FACTORY_PRODUCT_ID"] = product_id()
+    if os.environ.get("LAB_FACTORY_DEV_ALLOW") == "1":
+        env["LAB_FACTORY_DEV_ALLOW"] = "1"
     if os.environ.get("LAB_FACTORY_WORKSPACE_ROOT"):
         env["LAB_FACTORY_WORKSPACE_ROOT"] = str(workspace_root())
     if os.environ.get("LAB_FACTORY_LICENSE_FILE"):
@@ -502,10 +525,10 @@ def build_client_config(client: str) -> dict[str, Any]:
             "note": "Use this as a Claude Code MCP server snippet or translate it through Claude Code's MCP add command.",
         }
     if client == "codex":
-        env_lines = "\n".join(f'{key} = "{value}"' for key, value in env.items())
+        env_lines = "\n".join(f"{key} = {json.dumps(value, ensure_ascii=False)}" for key, value in env.items())
         toml = (
             "[mcp_servers.lab-skill-factory]\n"
-            f'command = "{command}"\n'
+            f"command = {json.dumps(command, ensure_ascii=False)}\n"
             f"args = {json.dumps(args, ensure_ascii=False)}\n\n"
             "[mcp_servers.lab-skill-factory.env]\n"
             f"{env_lines}\n"
@@ -589,9 +612,15 @@ def tool_activate(args: dict[str, Any]) -> dict[str, Any]:
         }
 
     code_hash = activation_hash(code)
+    db = load_activation_db()
+    if not db.get("exists", False):
+        raise ToolError(
+            "激活失败：当前未设置远程授权地址，且本地 activation_codes.json 不存在。"
+            "请使用 activate <激活码> --auth-url <授权服务地址>，"
+            "或在免费内测模式下重新执行 install --dev-allow。"
+        )
     entry = find_activation_entry(code_hash)
     if not entry:
-        db = load_activation_db()
         raise ToolError(
             "激活失败：激活码不在本地激活码库中。"
             f"当前激活码库：{db.get('path')}，exists={db.get('exists', False)}。"

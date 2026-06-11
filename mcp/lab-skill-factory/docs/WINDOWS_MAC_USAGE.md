@@ -104,7 +104,19 @@ LAB_FACTORY_AUTH_URL="https://your-auth-domain.example" lab-factory activate "BE
 LAB_FACTORY_AUTH_URL="https://your-auth-domain.example" lab-factory status
 ```
 
-如果你还没有部署远程授权服务，外部用户只能做安装和基础检查，无法完整使用受保护的工厂工具。开发者自己临时测试时可以设置 `LAB_FACTORY_DEV_ALLOW=1`，但不建议把这个方式作为正式内测流程发给用户。
+如果还没有部署远程授权服务，可以让免费内测用户通过安装器的 `--dev-allow` 模式使用。该模式只用于免费测试版，不应作为正式商业授权方案。
+
+Windows：
+
+```powershell
+& "$env:LOCALAPPDATA\Programs\Lab Factory\lab-factory.exe" install --target both --dev-allow
+```
+
+macOS：
+
+```bash
+lab-factory install --target both --dev-allow
+```
 
 ## 接入 Codex
 

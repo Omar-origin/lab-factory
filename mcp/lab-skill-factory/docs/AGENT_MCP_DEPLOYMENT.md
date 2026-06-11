@@ -21,6 +21,8 @@
 - macOS 常见路径是 `$HOME/.local/bin/lab-factory`。
 - macOS zip 里的实际二进制通常是 `dist/macos/lab-factory`，不会有 `.exe` 或 Windows 安装包。
 
+激活码模式必须同时提供激活码和授权服务地址。当前发行包不内置用户激活码数据库。如果两者都没有，按免费内测模式安装并显式使用 `--dev-allow`。
+
 ## macOS 内测处理
 
 macOS 免费测试包未做正式 Developer ID 签名和公证。部署时建议先复制到固定位置：
@@ -85,11 +87,25 @@ Codex：
 & "C:\实际安装路径\Lab Factory\lab-factory.exe" install --target both --auth-url "https://授权服务地址" --product-id "lab-skill-factory-beta"
 ```
 
+免费内测且没有激活码、授权地址时：
+
+```powershell
+& "C:\实际安装路径\Lab Factory\lab-factory.exe" install --target both --dev-allow
+```
+
 macOS/Linux 只需要把前面的 exe 路径换成实际二进制路径：
 
 ```bash
 "/actual/path/lab-factory" install --target both --auth-url "https://授权服务地址" --product-id "lab-skill-factory-beta"
 ```
+
+免费内测：
+
+```bash
+"/actual/path/lab-factory" install --target both --dev-allow
+```
+
+Claude Code 中项目级同名 MCP server 会覆盖用户级 server，而不是自动合并。安装器会读取当前有效的同名配置并合并 `env`，因此不要绕过安装器手写一份缺少授权变量的项目配置。
 
 如果只是预览配置，不真正写入：
 
@@ -210,13 +226,13 @@ Windows：
 
 ```powershell
 $env:LAB_FACTORY_AUTH_URL="https://授权服务地址"
-& "C:\实际安装路径\Lab Factory\lab-factory.exe" activate "用户的激活码"
+& "C:\实际安装路径\Lab Factory\lab-factory.exe" activate "用户的激活码" --auth-url "https://授权服务地址"
 ```
 
 macOS/Linux：
 
 ```bash
-LAB_FACTORY_AUTH_URL="https://授权服务地址" "/actual/path/lab-factory" activate "用户的激活码"
+"/actual/path/lab-factory" activate "用户的激活码" --auth-url "https://授权服务地址"
 ```
 
 如果用户通过 MCP 调用 `lab_factory_activate`，也可以输入同一个激活码。
