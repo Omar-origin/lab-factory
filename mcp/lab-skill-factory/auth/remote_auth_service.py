@@ -13,10 +13,11 @@ import json
 import os
 import secrets
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 
 def utc_now() -> str:
@@ -51,8 +52,17 @@ class AuthStore:
         conn.row_factory = sqlite3.Row
         return conn
 
+    @contextmanager
+    def connection(self) -> Iterator[sqlite3.Connection]:
+        conn = self.connect()
+        try:
+            with conn:
+                yield conn
+        finally:
+            conn.close()
+
     def init_db(self) -> None:
-        with self.connect() as conn:
+        with self.connection() as conn:
             conn.executescript(
                 """
                 create table if not exists activation_codes (
@@ -78,7 +88,7 @@ class AuthStore:
 
     def create_code(self, activation_code: str, label: str | None, expires_at: str | None, max_devices: int) -> dict:
         hashed = code_hash(activation_code)
-        with self.connect() as conn:
+        with self.connection() as conn:
             conn.execute(
                 """
                 insert or replace into activation_codes
@@ -91,7 +101,7 @@ class AuthStore:
 
     def activate(self, activation_code: str, device_id: str, product_id: str, customer_id: str | None) -> dict:
         hashed = code_hash(activation_code)
-        with self.connect() as conn:
+        with self.connection() as conn:
             code = conn.execute("select * from activation_codes where code_hash = ?", (hashed,)).fetchone()
             if not code:
                 return {"ok": False, "error": "invalid activation code"}
@@ -130,7 +140,7 @@ class AuthStore:
             return {"ok": True, "token": token, "expires_at": code["expires_at"]}
 
     def verify(self, token: str, device_id: str, product_id: str) -> dict:
-        with self.connect() as conn:
+        with self.connection() as conn:
             row = conn.execute("select * from activations where token = ?", (token,)).fetchone()
             if not row:
                 return {"ok": False, "error": "unknown token"}
