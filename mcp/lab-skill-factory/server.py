@@ -808,6 +808,44 @@ def tool_v2_propose_placements(args: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def tool_v2_propose_section_plan(args: dict[str, Any]) -> dict[str, Any]:
+    require_activation()
+    proposal = args.get("proposal")
+    if not isinstance(proposal, dict):
+        raise ToolError("proposal 必须是对象，包含材料来源、任务要求摘要、用户要求摘要和待新增标题。")
+    result = run_v2(
+        [
+            "create-section-plan", resolve_user_path(require_string(args, "inventory_path")),
+            "--proposal-json", json.dumps(proposal, ensure_ascii=False),
+            "--output", resolve_user_path(require_string(args, "output_path")),
+        ]
+    )
+    result["mcp_next_step"] = "把 section plan 的标题差异预览一次性展示给用户；未得到明确确认不得调用 apply_section_plan。"
+    return result
+
+
+def tool_v2_apply_section_plan(args: dict[str, Any]) -> dict[str, Any]:
+    require_activation()
+    workspace = require_string(args, "workspace")
+    require_v2_state(workspace, {"requirements_confirmed"})
+    confirmation = require_string(args, "user_confirmation_summary")
+    command = [
+        "apply-section-plan", resolve_user_path(require_string(args, "section_plan_path")),
+        resolve_user_path(require_string(args, "docx_path")),
+        "--confirmation", confirmation,
+        "--output", resolve_user_path(require_string(args, "output_path")),
+    ]
+    if args.get("overwrite") is True:
+        command.append("--overwrite")
+    result = run_v2(command, timeout=180)
+    transition = run_v2(
+        ["advance-session", resolve_user_path(workspace), "--event", "resolve_sections", "--feedback", confirmation]
+    )
+    result["session"] = transition.get("session")
+    result["mcp_next_step"] = "对扩展后的 DOCX 重新执行 inventory，再创建模板配置和定位计划；最终在 WPS 更新目录。"
+    return result
+
+
 def tool_v2_create_session(args: dict[str, Any]) -> dict[str, Any]:
     require_activation()
     command = [
@@ -844,7 +882,7 @@ def tool_v2_confirm_requirements(args: dict[str, Any]) -> dict[str, Any]:
 def tool_v2_resolve_placements(args: dict[str, Any]) -> dict[str, Any]:
     require_activation()
     workspace = require_string(args, "workspace")
-    require_v2_state(workspace, {"requirements_confirmed"})
+    require_v2_state(workspace, {"requirements_confirmed", "sections_resolved"})
     plan_path = Path(resolve_user_path(require_string(args, "placement_plan_path")))
     try:
         plan = json.loads(plan_path.read_text(encoding="utf-8"))
@@ -1345,6 +1383,46 @@ TOOLS: dict[str, dict[str, Any]] = {
         },
         "handler": tool_v2_propose_placements,
     },
+    "lab_factory_v2_propose_section_plan": {
+        "description": "宿主 AI 完整阅读材料并理解用户要求后，把模板标题树与所需结构编译为可审阅的二/三级标题扩展方案；本工具只提出方案，不修改 DOCX。",
+        "inputSchema": {
+            "type": "object", "required": ["inventory_path", "proposal", "output_path"],
+            "properties": {
+                "inventory_path": {"type": "string"},
+                "output_path": {"type": "string"},
+                "proposal": {
+                    "type": "object",
+                    "required": ["requirements_summary", "user_request_summary", "material_sources", "sections"],
+                    "properties": {
+                        "requirements_summary": {"type": "string", "minLength": 1},
+                        "user_request_summary": {"type": "string", "minLength": 1},
+                        "material_sources": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+                        "sections": {"type": "array", "minItems": 1, "items": {"type": "object"}},
+                    },
+                    "additionalProperties": False,
+                },
+            },
+            "additionalProperties": False,
+        },
+        "handler": tool_v2_propose_section_plan,
+    },
+    "lab_factory_v2_apply_section_plan": {
+        "description": "仅在用户确认标题差异方案后，把新增二/三级标题安全写入模板副本并记录审计；源文件不变，写入后必须重新 inventory。",
+        "inputSchema": {
+            "type": "object",
+            "required": ["workspace", "section_plan_path", "docx_path", "output_path", "user_confirmation_summary"],
+            "properties": {
+                "workspace": {"type": "string"},
+                "section_plan_path": {"type": "string"},
+                "docx_path": {"type": "string"},
+                "output_path": {"type": "string"},
+                "user_confirmation_summary": {"type": "string", "minLength": 1},
+                "overwrite": {"type": "boolean", "default": False},
+            },
+            "additionalProperties": False,
+        },
+        "handler": tool_v2_apply_section_plan,
+    },
     "lab_factory_v2_create_session": {
         "description": "创建可跨客户端重启恢复的 v2 报告会话，保存 variation seed、状态和审计日志。",
         "inputSchema": {
@@ -1557,7 +1635,8 @@ def handle_request(message: dict[str, Any]) -> dict[str, Any] | None:
                     "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
                     "instructions": (
                         "Use lab_factory_activate before protected tools. New report workflows should use lab_factory_v2_*: "
-                        "create session, confirm requirements, inventory/compile template, resolve placements, apply draft, review, finalize."
+                        "create session, confirm requirements, inventory headings, optionally propose and confirm a section plan, "
+                        "compile template, resolve placements, apply draft, review, finalize."
                     ),
                 },
             )

@@ -79,6 +79,15 @@ def make_formatting_template(path: Path) -> None:
     document.save(path)
 
 
+def make_section_template(path: Path) -> None:
+    document = Document()
+    document.add_heading("1 系统设计", level=1)
+    document.add_heading("1.1 功能设计", level=2)
+    document.add_heading("1.1.1 登录功能", level=3)
+    document.add_paragraph("登录功能正文。")
+    document.save(path)
+
+
 def xml_entry_hashes(path: Path) -> dict[str, str]:
     with zipfile.ZipFile(path) as archive:
         return {name: ENGINE.sha256(archive.read(name)) for name in archive.namelist()}
@@ -295,6 +304,73 @@ def run() -> dict:
             quality_blocked = "expected 20-40" in str(exc)
         results.append({"name": "content-quality-gate", "ok": quality_blocked})
 
+        section_template = root / "section-template.docx"
+        section_output = root / "section-expanded.docx"
+        make_section_template(section_template)
+        section_source_hash = ENGINE.file_sha256(section_template)
+        section_inventory = ENGINE.inventory_docx(section_template)
+        h1 = next(node for node in section_inventory["nodes"] if node["text"] == "1 系统设计")
+        h2 = next(node for node in section_inventory["nodes"] if node["text"] == "1.1 功能设计")
+        h3 = next(node for node in section_inventory["nodes"] if node["text"] == "1.1.1 登录功能")
+        h3_body = next(node for node in section_inventory["nodes"] if node["text"] == "登录功能正文。")
+        results.append({
+            "name": "inventory-heading-tree",
+            "ok": [item["level"] for item in section_inventory["heading_tree"]] == [1, 2, 3],
+        })
+        section_proposal = {
+            "requirements_summary": "任务要求增加测试设计章节，并细分登录测试。",
+            "user_request_summary": "用户确认需要扩展模板标题。",
+            "material_sources": ["实验任务书.docx", "用户补充说明"],
+            "sections": [
+                {
+                    "id": "test_design", "title": "测试设计", "level": 2,
+                    "numbering_mode": "literal", "number_text": "1.2",
+                    "style_source_node_id": h2["node_id"],
+                    "after_node_id": h3_body["node_id"], "parent_node_id": h1["node_id"],
+                },
+                {
+                    "id": "login_test", "title": "登录测试", "level": 3,
+                    "numbering_mode": "literal", "number_text": "1.2.1",
+                    "style_source_node_id": h3["node_id"],
+                    "after_section_id": "test_design", "parent_section_id": "test_design",
+                },
+            ],
+        }
+        section_plan = ENGINE.create_section_plan(section_inventory, section_proposal)
+        section_before_entries = xml_entry_hashes(section_template)
+        section_result = ENGINE.apply_section_plan(
+            section_plan, section_template, section_output, "用户确认新增 1.2 和 1.2.1 标题"
+        )
+        section_after_entries = xml_entry_hashes(section_output)
+        section_output_inventory = ENGINE.inventory_docx(section_output)
+        section_texts = [node["text"] for node in section_output_inventory["nodes"]]
+        results.append({
+            "name": "controlled-section-expansion",
+            "ok": (
+                "1.2 测试设计" in section_texts
+                and "1.2.1 登录测试" in section_texts
+                and ENGINE.file_sha256(section_template) == section_source_hash
+                and section_result["changed_parts"] == ["word/document.xml"]
+                and all(
+                    section_before_entries[name] == section_after_entries[name]
+                    for name in section_before_entries
+                    if name != "word/document.xml"
+                )
+            ),
+        })
+        invalid_section_blocked = False
+        try:
+            ENGINE.create_section_plan(
+                section_inventory,
+                {
+                    **section_proposal,
+                    "sections": [{**section_proposal["sections"][0], "level": 3}],
+                },
+            )
+        except ENGINE.V2Error as exc:
+            invalid_section_blocked = "style source must be an existing level 3" in str(exc)
+        results.append({"name": "section-style-level-mismatch-blocked", "ok": invalid_section_blocked})
+
         session_workspace = root / "session"
         session = ENGINE.create_session(session_workspace, "软件工程")
         for event in ("confirm_requirements", "resolve_placements", "mark_content_ready", "record_draft"):
@@ -304,6 +380,19 @@ def run() -> dict:
         session = ENGINE.advance_session(session_workspace, "finalize", review_id, "用户确认生成终稿")
         session = ENGINE.advance_session(session_workspace, "finish_without_update", review_id, "本次不更新 Skill")
         results.append({"name": "session-state-machine", "ok": session["session"]["state"] == "iteration_decided"})
+        section_session_workspace = root / "section-session"
+        ENGINE.create_session(section_session_workspace, "软件工程")
+        ENGINE.advance_session(section_session_workspace, "confirm_requirements", None, "用户确认需求")
+        section_state = ENGINE.advance_session(
+            section_session_workspace, "resolve_sections", None, "用户确认标题扩展方案"
+        )
+        section_state = ENGINE.advance_session(
+            section_session_workspace, "resolve_placements", None, "用户确认扩展模板定位"
+        )
+        results.append({
+            "name": "optional-section-state-transition",
+            "ok": section_state["session"]["state"] == "placements_resolved",
+        })
 
         writing = ENGINE.create_writing_profile("软件工程", "technical", {"tone": "规范"})
         results.append({"name": "writing-profile", "ok": writing["dimensions"]["detail"] == "详细" and writing["dimensions"]["tone"] == "规范"})
@@ -387,6 +476,34 @@ def run() -> dict:
                 },
             )
             server.tool_v2_confirm_requirements({"workspace": str(api_workspace), "requirements_path": str(requirements_path), "user_confirmation_summary": "用户确认需求摘要"})
+            api_section_workspace = root / "api-section-workspace"
+            server.tool_v2_create_session({"workspace": str(api_section_workspace), "subject": "软件工程"})
+            server.tool_v2_confirm_requirements({
+                "workspace": str(api_section_workspace), "requirements_path": str(requirements_path),
+                "user_confirmation_summary": "用户确认需求摘要",
+            })
+            api_section_inventory_path = root / "api-section-inventory.json"
+            server.tool_v2_inventory({
+                "docx_path": str(section_template), "output_path": str(api_section_inventory_path),
+            })
+            api_section_plan_path = root / "api-section-plan.json"
+            server.tool_v2_propose_section_plan({
+                "inventory_path": str(api_section_inventory_path), "proposal": section_proposal,
+                "output_path": str(api_section_plan_path),
+            })
+            api_expanded_template = root / "api-section-expanded.docx"
+            api_section_result = server.tool_v2_apply_section_plan({
+                "workspace": str(api_section_workspace), "section_plan_path": str(api_section_plan_path),
+                "docx_path": str(section_template), "output_path": str(api_expanded_template),
+                "user_confirmation_summary": "用户确认新增测试设计及登录测试标题",
+            })
+            results.append({
+                "name": "mcp-controlled-section-expansion",
+                "ok": (
+                    api_section_result["session"]["state"] == "sections_resolved"
+                    and api_expanded_template.exists()
+                ),
+            })
             inventory_path = root / "inventory.json"
             server.tool_v2_inventory({"docx_path": str(template), "output_path": str(inventory_path)})
             profile_path = root / "profile.json"

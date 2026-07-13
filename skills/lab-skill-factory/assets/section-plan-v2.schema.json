@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lab-factory.local/schemas/section-plan-v2.schema.json",
+  "title": "Lab Factory v2 Section Plan",
+  "type": "object",
+  "required": [
+    "version",
+    "plan_id",
+    "status",
+    "source_document_sha256",
+    "requirements_summary",
+    "user_request_summary",
+    "material_sources",
+    "confirmation_required",
+    "sections"
+  ],
+  "properties": {
+    "version": {"const": "2.0"},
+    "plan_id": {"type": "string", "pattern": "^sp_[a-f0-9]{16}$"},
+    "status": {"const": "proposed"},
+    "created_at": {"type": "string"},
+    "source_document": {"type": "string"},
+    "source_document_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "requirements_summary": {"type": "string", "minLength": 1},
+    "user_request_summary": {"type": "string", "minLength": 1},
+    "material_sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "confirmation_required": {"const": true},
+    "sections": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "action",
+          "title",
+          "display_text",
+          "level",
+          "numbering_mode",
+          "style_source_node_id",
+          "after",
+          "parent",
+          "preview"
+        ],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"},
+          "action": {"const": "insert_heading_after"},
+          "title": {"type": "string", "minLength": 1, "maxLength": 100},
+          "display_text": {"type": "string", "minLength": 1, "maxLength": 120},
+          "level": {"enum": [2, 3]},
+          "numbering_mode": {"enum": ["literal", "automatic"]},
+          "number_text": {"type": ["string", "null"]},
+          "style_source_node_id": {"type": "string"},
+          "after": {"$ref": "#/$defs/reference"},
+          "parent": {"$ref": "#/$defs/reference"},
+          "preview": {"type": "string"}
+        },
+        "additionalProperties": false
+      }
+    },
+    "preview": {"type": "array", "items": {"type": "string"}},
+    "next_step": {"type": "string"}
+  },
+  "$defs": {
+    "reference": {
+      "type": "object",
+      "required": ["kind", "id"],
+      "properties": {
+        "kind": {"enum": ["node", "section"]},
+        "id": {"type": "string"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

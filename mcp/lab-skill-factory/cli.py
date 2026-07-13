@@ -277,6 +277,18 @@ def main() -> int:
     propose_v2.add_argument("docx_path")
     propose_v2.add_argument("--output")
 
+    section_plan_v2 = sub.add_parser("section-plan-v2", help="Compile an AI-proposed level 2/3 heading expansion for user review.")
+    section_plan_v2.add_argument("inventory_path")
+    section_plan_v2.add_argument("output_path")
+    section_plan_v2.add_argument("--proposal-json", required=True)
+
+    apply_section_plan_v2 = sub.add_parser("apply-section-plan-v2", help="Apply a user-confirmed heading expansion to a DOCX copy.")
+    apply_section_plan_v2.add_argument("section_plan_path")
+    apply_section_plan_v2.add_argument("docx_path")
+    apply_section_plan_v2.add_argument("output_path")
+    apply_section_plan_v2.add_argument("--confirmation", required=True)
+    apply_section_plan_v2.add_argument("--overwrite", action="store_true")
+
     apply_v2 = sub.add_parser("apply-v2", help="Apply a v2 content package with structural placement gates.")
     apply_v2.add_argument("profile_path")
     apply_v2.add_argument("docx_path")
@@ -378,6 +390,29 @@ def main() -> int:
         if args.output:
             payload["output_path"] = args.output
         return call_tool(server.tool_v2_propose_placements, payload)
+    if args.command == "section-plan-v2":
+        try:
+            proposal = json.loads(args.proposal_json)
+        except json.JSONDecodeError as exc:
+            print_json({"ok": False, "error": f"Invalid --proposal-json: {exc}"})
+            return 2
+        return call_tool(server.tool_v2_propose_section_plan, {
+            "inventory_path": args.inventory_path, "output_path": args.output_path, "proposal": proposal,
+        })
+    if args.command == "apply-section-plan-v2":
+        command = [
+            "apply-section-plan", server.resolve_user_path(args.section_plan_path),
+            server.resolve_user_path(args.docx_path), "--confirmation", args.confirmation,
+            "--output", server.resolve_user_path(args.output_path),
+        ]
+        if args.overwrite:
+            command.append("--overwrite")
+        try:
+            print_json(server.run_v2(command, timeout=180))
+            return 0
+        except server.ToolError as exc:
+            print_json({"ok": False, "error": str(exc)})
+            return 1
     if args.command == "apply-v2":
         # Direct CLI use is diagnostic and does not advance an MCP workflow session.
         command = [

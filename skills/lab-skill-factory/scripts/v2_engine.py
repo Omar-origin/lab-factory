@@ -45,6 +45,7 @@ FAMILY_COMPATIBILITY_THRESHOLD = 0.72
 STATES = [
     "materials_scanned",
     "requirements_confirmed",
+    "sections_resolved",
     "placements_resolved",
     "content_ready",
     "draft_generated",
@@ -94,6 +95,61 @@ def child_value(element: etree._Element, xpath: str) -> str | None:
     if isinstance(value, etree._Element):
         return value.get(f"{W}val")
     return str(value)
+
+
+def heading_metadata(
+    paragraph: etree._Element,
+    text: str | None = None,
+    style_headings: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Infer a visible heading level without trusting a single Word convention."""
+    value = (text if text is not None else element_text(paragraph)).strip()
+    style_id = child_value(paragraph, "./w:pPr/w:pStyle") or ""
+    outline = child_value(paragraph, "./w:pPr/w:outlineLvl")
+    level: int | None = None
+    style_match = re.search(r"(?:heading|标题)[ _-]*([1-9])", style_id, re.IGNORECASE)
+    style_metadata = (style_headings or {}).get(style_id) or {}
+    if style_metadata.get("level"):
+        level = int(style_metadata["level"])
+    elif style_match:
+        level = int(style_match.group(1))
+    elif outline is not None and outline.isdigit():
+        level = int(outline) + 1
+    number_match = re.match(
+        r"^\s*(?:(\d+(?:\.\d+)+)[、.．]?\s*|(\d{1,2})[、.．]\s*|(\d{1,2})\s+)(?=\D)",
+        value,
+    )
+    number_text = next((group for group in number_match.groups() if group), None) if number_match else None
+    if level is None and number_text:
+        level = len(number_text.split("."))
+    title = value[number_match.end():].strip() if number_match else value
+    return {
+        "level": level,
+        "number_text": number_text,
+        "title": title,
+        "style_name": style_metadata.get("name"),
+    }
+
+
+def paragraph_style_headings(archive: zipfile.ZipFile) -> dict[str, dict[str, Any]]:
+    if "word/styles.xml" not in archive.namelist():
+        return {}
+    root = etree.fromstring(archive.read("word/styles.xml"))
+    result: dict[str, dict[str, Any]] = {}
+    for style in root.xpath("./w:style[@w:type='paragraph']", namespaces=NS):
+        style_id = style.get(f"{W}styleId")
+        if not style_id:
+            continue
+        name = child_value(style, "./w:name") or ""
+        outline = child_value(style, "./w:pPr/w:outlineLvl")
+        level: int | None = None
+        name_match = re.search(r"(?:heading|标题)[ _-]*([1-9])", name, re.IGNORECASE)
+        if name_match:
+            level = int(name_match.group(1))
+        elif outline is not None and outline.isdigit() and int(outline) <= 8:
+            level = int(outline) + 1
+        result[style_id] = {"name": name or None, "level": level}
+    return result
 
 
 def story_parts(names: Iterable[str]) -> list[tuple[str, str]]:
@@ -279,6 +335,7 @@ def inventory_docx(path: Path) -> dict[str, Any]:
         raise V2Error(f"DOCX does not exist or has wrong extension: {path}")
     with zipfile.ZipFile(path) as archive:
         names = archive.namelist()
+        style_headings = paragraph_style_headings(archive)
         nodes: list[dict[str, Any]] = []
         parts: dict[str, str] = {}
         story_counts: dict[str, int] = {}
@@ -304,6 +361,7 @@ def inventory_docx(path: Path) -> dict[str, Any]:
                     "num_id": child_value(paragraph, "./w:pPr/w:numPr/w:numId"),
                     "level": child_value(paragraph, "./w:pPr/w:numPr/w:ilvl"),
                 }
+                heading = heading_metadata(paragraph, text, style_headings)
                 ppr = paragraph.find(f"{W}pPr")
                 rpr = paragraph.find(f".//{W}rPr")
                 signature = {
@@ -326,6 +384,10 @@ def inventory_docx(path: Path) -> dict[str, Any]:
                         "normalized_text": normalize_text(text)[:1000],
                         "style_id": style_id,
                         "numbering": numbering,
+                        "heading_level": heading["level"],
+                        "heading_number": heading["number_text"],
+                        "heading_title": heading["title"] if heading["level"] else None,
+                        "style_name": heading["style_name"],
                         "paragraph_properties_hash": sha256(etree.tostring(ppr)) if ppr is not None else None,
                         "run_properties_hash": sha256(etree.tostring(rpr)) if rpr is not None else None,
                         "unsupported": unsupported_reasons(paragraph),
@@ -355,6 +417,24 @@ def inventory_docx(path: Path) -> dict[str, Any]:
     label_tokens = [node["normalized_text"][:80] for node in nodes if 0 < len(node["normalized_text"]) <= 80]
     family_fingerprint = sha256("\n".join(structure_tokens).encode("utf-8"))
     family_signature = build_family_signature(nodes)
+    heading_tree = [
+        {
+            "node_id": node["node_id"],
+            "story": node["story"],
+            "container": node["container"],
+            "coordinates": node["coordinates"],
+            "level": node["heading_level"],
+            "number_text": node["heading_number"],
+            "title": node["heading_title"],
+            "text": node["text"],
+            "style_id": node["style_id"],
+            "style_name": node["style_name"],
+            "numbering": node["numbering"],
+            "unsupported": node["unsupported"],
+        }
+        for node in nodes
+        if node.get("heading_level") in {1, 2, 3}
+    ]
     return {
         "ok": True,
         "version": PROFILE_VERSION,
@@ -367,6 +447,7 @@ def inventory_docx(path: Path) -> dict[str, Any]:
         "story_counts": story_counts,
         "image_relationships": image_relationships,
         "nodes": nodes,
+        "heading_tree": heading_tree,
         "part_hashes": parts,
         "limitations": [
             "Text boxes, formulas, fields, and tracked revisions are inventoried as unsupported and are never auto-written.",
@@ -758,6 +839,314 @@ def paragraph_with_text(
     return paragraph
 
 
+def same_heading_scope(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    if left.get("story") != "document" or right.get("story") != "document":
+        return False
+    if left.get("part_name") != right.get("part_name") or left.get("container") != right.get("container"):
+        return False
+    if left.get("container") != "table_cell":
+        return True
+    left_coordinates = left.get("coordinates") or {}
+    right_coordinates = right.get("coordinates") or {}
+    return all(
+        left_coordinates.get(key) == right_coordinates.get(key)
+        for key in ("table", "row", "cell")
+    )
+
+
+def create_section_plan(inventory: dict[str, Any], proposal: dict[str, Any]) -> dict[str, Any]:
+    """Compile an AI-proposed heading expansion into a deterministic review plan."""
+    requirements_summary = proposal.get("requirements_summary")
+    user_request_summary = proposal.get("user_request_summary")
+    material_sources = proposal.get("material_sources")
+    requested = proposal.get("sections")
+    if not isinstance(requirements_summary, str) or not requirements_summary.strip():
+        raise V2Error("section plan requires requirements_summary after reading all materials")
+    if not isinstance(user_request_summary, str) or not user_request_summary.strip():
+        raise V2Error("section plan requires user_request_summary")
+    if not isinstance(material_sources, list) or not material_sources or not all(
+        isinstance(item, str) and item.strip() for item in material_sources
+    ):
+        raise V2Error("section plan requires a non-empty material_sources array")
+    if not isinstance(requested, list) or not requested:
+        raise V2Error("section plan sections must be a non-empty array")
+
+    node_by_id = {node["node_id"]: node for node in inventory.get("nodes", [])}
+    used_literal_numbers = {
+        node["heading_number"] for node in inventory.get("nodes", []) if node.get("heading_number")
+    }
+    planned: dict[str, dict[str, Any]] = {}
+    sections: list[dict[str, Any]] = []
+
+    def resolve_reference(item: dict[str, Any], node_key: str, section_key: str) -> tuple[str, dict[str, Any]]:
+        node_id = item.get(node_key)
+        section_id = item.get(section_key)
+        if bool(node_id) == bool(section_id):
+            raise V2Error(f"{item.get('id')}: exactly one of {node_key} or {section_key} is required")
+        if node_id:
+            node = node_by_id.get(node_id)
+            if node is None:
+                raise V2Error(f"{item.get('id')}: unknown {node_key} {node_id}")
+            return "node", node
+        section = planned.get(section_id)
+        if section is None:
+            raise V2Error(f"{item.get('id')}: {section_key} must refer to an earlier planned section")
+        return "section", section
+
+    for raw in requested:
+        if not isinstance(raw, dict):
+            raise V2Error("section plan entries must be objects")
+        section_id = validate_field_id(raw.get("id"))
+        if section_id in planned:
+            raise V2Error(f"Duplicate section id: {section_id}")
+        title = raw.get("title")
+        if not isinstance(title, str) or not title.strip() or len(title.strip()) > 100 or "\n" in title:
+            raise V2Error(f"{section_id}: title must be 1-100 characters on one line")
+        title = title.strip()
+        if re.match(r"^\s*\d+(?:\.\d+)*[、.．]?\s+", title):
+            raise V2Error(f"{section_id}: title must not repeat the number prefix")
+        level = raw.get("level")
+        if level not in {2, 3}:
+            raise V2Error(f"{section_id}: only level 2 or 3 headings are supported")
+        style_source = node_by_id.get(raw.get("style_source_node_id"))
+        if style_source is None:
+            raise V2Error(f"{section_id}: unknown style_source_node_id")
+        if style_source.get("unsupported"):
+            raise V2Error(f"{section_id}: style source is unsupported: {style_source['unsupported']}")
+        if style_source.get("heading_level") != level:
+            raise V2Error(f"{section_id}: style source must be an existing level {level} heading")
+
+        after_kind, after = resolve_reference(raw, "after_node_id", "after_section_id")
+        parent_kind, parent = resolve_reference(raw, "parent_node_id", "parent_section_id")
+        after_scope = after["scope_node"] if after_kind == "section" else after
+        parent_scope = parent["scope_node"] if parent_kind == "section" else parent
+        if after_scope.get("unsupported") or parent_scope.get("unsupported"):
+            raise V2Error(f"{section_id}: anchor or parent is unsupported")
+        if not same_heading_scope(style_source, after_scope) or not same_heading_scope(style_source, parent_scope):
+            raise V2Error(f"{section_id}: style source, insertion anchor and parent must share one body container")
+        parent_level = parent.get("level") if parent_kind == "section" else parent.get("heading_level")
+        if parent_level != level - 1:
+            raise V2Error(f"{section_id}: parent must be a level {level - 1} heading")
+        if parent_kind == "node" and after_kind == "node":
+            if int(after.get("order", -1)) <= int(parent.get("order", -1)):
+                raise V2Error(f"{section_id}: insertion anchor must appear after its parent heading")
+            for candidate in inventory.get("nodes", []):
+                if not same_heading_scope(parent, candidate):
+                    continue
+                if int(parent.get("order", -1)) < int(candidate.get("order", -1)) <= int(after.get("order", -1)):
+                    candidate_level = candidate.get("heading_level")
+                    if candidate_level is not None and candidate_level <= parent_level:
+                        raise V2Error(f"{section_id}: insertion anchor is outside the selected parent heading")
+        elif parent_kind == "section" and after_kind == "section":
+            if after["id"] != parent["id"] and (after.get("parent") or {}).get("id") != parent["id"]:
+                raise V2Error(f"{section_id}: planned insertion anchor is outside the selected parent heading")
+
+        numbering_mode = raw.get("numbering_mode", "literal")
+        if numbering_mode not in {"literal", "automatic"}:
+            raise V2Error(f"{section_id}: numbering_mode must be literal or automatic")
+        number_text = raw.get("number_text")
+        if numbering_mode == "literal":
+            if not isinstance(number_text, str) or not re.fullmatch(r"\d+(?:\.\d+)+", number_text.strip()):
+                raise V2Error(f"{section_id}: literal numbering requires number_text such as 2.2 or 2.2.1")
+            number_text = number_text.strip()
+            if len(number_text.split(".")) != level:
+                raise V2Error(f"{section_id}: number_text does not match heading level {level}")
+            if number_text in used_literal_numbers:
+                raise V2Error(f"{section_id}: duplicate heading number {number_text}")
+            parent_number = parent.get("number_text") if parent_kind == "section" else parent.get("heading_number")
+            if parent_number and not number_text.startswith(f"{parent_number}."):
+                raise V2Error(f"{section_id}: number_text must be a child of parent number {parent_number}")
+            used_literal_numbers.add(number_text)
+        else:
+            number_text = None
+            source_numbering = style_source.get("numbering") or {}
+            if not source_numbering.get("num_id") and not style_source.get("style_id"):
+                raise V2Error(f"{section_id}: automatic numbering requires a numbered or styled heading source")
+
+        display_text = f"{number_text} {title}" if number_text else title
+        compiled = {
+            "id": section_id,
+            "action": "insert_heading_after",
+            "title": title,
+            "display_text": display_text,
+            "level": level,
+            "numbering_mode": numbering_mode,
+            "number_text": number_text,
+            "style_source_node_id": style_source["node_id"],
+            "after": {"kind": after_kind, "id": after["node_id"] if after_kind == "node" else after["id"]},
+            "parent": {"kind": parent_kind, "id": parent["node_id"] if parent_kind == "node" else parent["id"]},
+            "scope_node": style_source,
+            "preview": f"新增 {level} 级标题：{display_text}",
+        }
+        sections.append({key: value for key, value in compiled.items() if key != "scope_node"})
+        planned[section_id] = compiled
+
+    return {
+        "version": PROFILE_VERSION,
+        "plan_id": "sp_" + uuid.uuid4().hex[:16],
+        "status": "proposed",
+        "created_at": now_iso(),
+        "source_document": inventory.get("document"),
+        "source_document_sha256": inventory.get("document_sha256"),
+        "requirements_summary": requirements_summary.strip(),
+        "user_request_summary": user_request_summary.strip(),
+        "material_sources": [item.strip() for item in material_sources],
+        "confirmation_required": True,
+        "sections": sections,
+        "preview": [item["preview"] for item in sections],
+        "next_step": "Show this preview to the user and apply only after explicit confirmation.",
+    }
+
+
+def validate_section_plan(plan: dict[str, Any], inventory: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    if plan.get("version") != PROFILE_VERSION:
+        errors.append("version must be 2.0")
+    if plan.get("status") != "proposed" or plan.get("confirmation_required") is not True:
+        errors.append("section plan must remain proposed until the apply call records user confirmation")
+    if plan.get("source_document_sha256") != inventory.get("document_sha256"):
+        errors.append("section plan source hash does not match the target document")
+    try:
+        recreated = create_section_plan(
+            inventory,
+            {
+                "requirements_summary": plan.get("requirements_summary"),
+                "user_request_summary": plan.get("user_request_summary"),
+                "material_sources": plan.get("material_sources"),
+                "sections": [
+                    {
+                        "id": item.get("id"),
+                        "title": item.get("title"),
+                        "level": item.get("level"),
+                        "numbering_mode": item.get("numbering_mode"),
+                        "number_text": item.get("number_text"),
+                        "style_source_node_id": item.get("style_source_node_id"),
+                        ("after_node_id" if (item.get("after") or {}).get("kind") == "node" else "after_section_id"): (item.get("after") or {}).get("id"),
+                        ("parent_node_id" if (item.get("parent") or {}).get("kind") == "node" else "parent_section_id"): (item.get("parent") or {}).get("id"),
+                    }
+                    for item in plan.get("sections", [])
+                    if isinstance(item, dict)
+                ],
+            },
+        )
+        if recreated["sections"] != plan.get("sections"):
+            errors.append("section plan operations were modified after compilation")
+    except V2Error as exc:
+        errors.append(str(exc))
+    return errors
+
+
+def apply_section_plan(
+    plan: dict[str, Any], target: Path, output: Path, user_confirmation_summary: str, overwrite: bool = False
+) -> dict[str, Any]:
+    if not user_confirmation_summary.strip():
+        raise V2Error("section expansion requires a user confirmation summary")
+    if target.resolve() == output.resolve():
+        raise V2Error("Section expansion output must not overwrite the source document")
+    if output.exists() and not overwrite:
+        raise V2Error(f"Output already exists: {output}")
+    inventory = inventory_docx(target)
+    errors = validate_section_plan(plan, inventory)
+    if errors:
+        raise V2Error("Invalid section plan: " + "; ".join(errors))
+    node_by_id = {node["node_id"]: node for node in inventory["nodes"]}
+    source_hash = file_sha256(target)
+    before_entries = zip_entry_hashes(target)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary_name = tempfile.mkstemp(prefix=".lab-factory-sections-", suffix=".docx", dir=str(output.parent))
+    os.close(fd)
+    temporary = Path(temporary_name)
+    audit: list[dict[str, Any]] = []
+    try:
+        by_part: dict[str, list[dict[str, Any]]] = {}
+        for item in plan["sections"]:
+            style_source = node_by_id[item["style_source_node_id"]]
+            by_part.setdefault(style_source["part_name"], []).append(item)
+        with zipfile.ZipFile(target) as source, zipfile.ZipFile(temporary, "w") as destination:
+            for info in source.infolist():
+                raw = source.read(info.filename)
+                if info.filename in by_part:
+                    root = etree.fromstring(raw)
+                    existing_elements: dict[str, etree._Element] = {}
+                    needed_node_ids = {
+                        item["style_source_node_id"] for item in by_part[info.filename]
+                    } | {
+                        ref["id"]
+                        for item in by_part[info.filename]
+                        for ref in (item["after"], item["parent"])
+                        if ref["kind"] == "node"
+                    }
+                    for node_id in needed_node_ids:
+                        node = node_by_id[node_id]
+                        matches = root.xpath(node["path"], namespaces=NS)
+                        if len(matches) != 1:
+                            raise V2Error(f"section plan node {node_id} resolved to {len(matches)} elements")
+                        existing_elements[node_id] = matches[0]
+                    inserted: dict[str, etree._Element] = {}
+                    insertion_tails: dict[str, etree._Element] = {}
+                    for item in by_part[info.filename]:
+                        style_source = existing_elements[item["style_source_node_id"]]
+                        after = item["after"]
+                        if after["kind"] == "section":
+                            anchor = inserted.get(after["id"])
+                            if anchor is None:
+                                raise V2Error(f"{item['id']}: planned insertion anchor is not available")
+                        else:
+                            anchor = insertion_tails.get(after["id"], existing_elements[after["id"]])
+                        paragraph = paragraph_with_text(style_source, item["display_text"])
+                        anchor.addnext(paragraph)
+                        if after["kind"] == "node":
+                            insertion_tails[after["id"]] = paragraph
+                        inserted[item["id"]] = paragraph
+                        audit.append(
+                            {
+                                "section_id": item["id"],
+                                "action": "insert_heading_after",
+                                "display_text": item["display_text"],
+                                "level": item["level"],
+                                "style_source_node_id": item["style_source_node_id"],
+                                "after": item["after"],
+                                "parent": item["parent"],
+                            }
+                        )
+                    raw = etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+                destination.writestr(info, raw)
+        if file_sha256(target) != source_hash:
+            raise V2Error("Source document changed during section expansion")
+        temporary_inventory = inventory_docx(temporary)
+        temporary_texts = {node["text"] for node in temporary_inventory["nodes"]}
+        missing = [item["display_text"] for item in plan["sections"] if item["display_text"] not in temporary_texts]
+        if missing:
+            raise V2Error(f"Inserted headings failed post-write verification: {missing}")
+        after_entries = zip_entry_hashes(temporary)
+        changed_parts = sorted(name for name in before_entries if before_entries[name] != after_entries.get(name))
+        unexpected = sorted(set(changed_parts) - set(by_part))
+        if unexpected:
+            raise V2Error(f"Unexpected DOCX package parts changed: {unexpected}")
+        os.replace(temporary, output)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+    output_inventory = inventory_docx(output)
+    return {
+        "ok": True,
+        "version": PROFILE_VERSION,
+        "plan_id": plan.get("plan_id"),
+        "source_document": str(target),
+        "source_sha256": source_hash,
+        "output_document": str(output),
+        "output_sha256": file_sha256(output),
+        "changed_parts": sorted(by_part),
+        "untouched_part_count": len(before_entries) - len(by_part),
+        "user_confirmation_summary": user_confirmation_summary.strip(),
+        "audit": audit,
+        "heading_tree": output_inventory["heading_tree"],
+        "wps_review_required": True,
+        "wps_review_checklist": ["新增标题层级", "标题编号连续性", "标题样式", "更新目录"],
+        "mcp_next_step": "Re-inventory this expanded template before compiling placements and remind the user to update the TOC in WPS.",
+    }
+
+
 def replace_placeholder(paragraph: etree._Element, placeholder: str, content: str) -> bool:
     text_nodes = paragraph.xpath(".//w:t", namespaces=NS)
     full_text = "".join(node.text or "" for node in text_nodes)
@@ -1061,7 +1450,8 @@ def create_session(workspace: Path, subject: str, report_id: str | None = None) 
 
 EVENTS: dict[str, tuple[set[str], str]] = {
     "confirm_requirements": ({"materials_scanned"}, "requirements_confirmed"),
-    "resolve_placements": ({"requirements_confirmed"}, "placements_resolved"),
+    "resolve_sections": ({"requirements_confirmed"}, "sections_resolved"),
+    "resolve_placements": ({"requirements_confirmed", "sections_resolved"}, "placements_resolved"),
     "mark_content_ready": ({"placements_resolved", "draft_reviewed"}, "content_ready"),
     "record_draft": ({"content_ready"}, "draft_generated"),
     "approve_draft": ({"draft_generated"}, "draft_reviewed"),
@@ -1433,6 +1823,18 @@ def main() -> int:
     confirm_parser.add_argument("--summary", required=True)
     confirm_parser.add_argument("--output", required=True)
 
+    section_plan_parser = sub.add_parser("create-section-plan")
+    section_plan_parser.add_argument("inventory")
+    section_plan_parser.add_argument("--proposal-json", required=True)
+    section_plan_parser.add_argument("--output", required=True)
+
+    apply_sections_parser = sub.add_parser("apply-section-plan")
+    apply_sections_parser.add_argument("plan")
+    apply_sections_parser.add_argument("docx")
+    apply_sections_parser.add_argument("--confirmation", required=True)
+    apply_sections_parser.add_argument("--output", required=True)
+    apply_sections_parser.add_argument("--overwrite", action="store_true")
+
     apply_parser = sub.add_parser("apply")
     apply_parser.add_argument("profile")
     apply_parser.add_argument("docx")
@@ -1515,6 +1917,22 @@ def main() -> int:
             )
             write_json(Path(args.output).resolve(), updated)
             result = {"ok": True, "profile_path": str(Path(args.output).resolve()), "profile": updated}
+        elif args.command == "create-section-plan":
+            proposal = json.loads(args.proposal_json)
+            if not isinstance(proposal, dict):
+                raise V2Error("proposal-json must be an object")
+            section_plan = create_section_plan(load_json(Path(args.inventory)), proposal)
+            write_json(Path(args.output).expanduser().resolve(), section_plan)
+            result = {
+                "ok": True,
+                "section_plan_path": str(Path(args.output).expanduser().resolve()),
+                "section_plan": section_plan,
+            }
+        elif args.command == "apply-section-plan":
+            result = apply_section_plan(
+                load_json(Path(args.plan)), Path(args.docx).expanduser().resolve(),
+                Path(args.output).expanduser().resolve(), args.confirmation, args.overwrite,
+            )
         elif args.command == "apply":
             result = apply_v2(
                 load_json(Path(args.profile)), Path(args.docx).resolve(), load_json(Path(args.content)),

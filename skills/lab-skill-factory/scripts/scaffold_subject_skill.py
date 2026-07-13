@@ -654,7 +654,7 @@ def starter_evals(slug: str, title: str) -> dict:
             {
                 "id": "preserve-docx-formatting",
                 "prompt": "请把 fill.md 内容写入 DOCX 模板副本，模板里有封面、目录、表格和不同标题样式。",
-                "expected_output": "要求字节级复制原文件，默认用 python-docx + lxml 按 fill-map.json 最小范围填入副本并继承目标锚点样式；不能整篇重建 DOCX，不能用 Mammoth 写回覆盖模板，草稿阶段不得改变原结构、字体、字号、内容、格式和排版。",
+                "expected_output": "要求字节级复制原文件，默认用 python-docx + lxml 按 fill-map.json 最小范围填入副本并继承目标锚点样式；不能整篇重建 DOCX，不能用 Mammoth 写回覆盖模板。只有完整阅读材料、生成 section-plan 并经用户确认后，才允许在副本中受控新增二级/三级标题。",
                 "files": [],
             },
             {
@@ -782,7 +782,7 @@ description: |
 - 所有新任务使用 v2；v1 `fill-map.json` 只允许迁移后重新定位。
 - 先创建持久化会话、确认 requirements-summary、解析 OOXML inventory、解决定位，再生成 content-package 和草稿。
 - 关键产物是 `requirements-summary.json`、`template-profile.json`、`content-package.json`；每份报告沿用会话 `variation_seed`，低置信度定位必须用户确认。
-- 第一次只填补，不删除、不改写、不重排原文，不改变原结构、字体、字号、内容、格式和排版。
+- 第一次默认只填补，不删除、不改写、不重排原文；只有完整阅读材料、生成 `section-plan.json` 并得到用户明确确认后，才允许在模板副本中受控新增二级/三级标题。除此之外不得改变原结构、字体、字号、内容、格式和排版。
 - 当前实验编号只能作为样例，不要把它当成唯一适配范围，除非本 skill 明确是实验级。
 - 生成 `fill.md` 前必须先从头到尾完整阅读实验报告、任务书和文末提交说明，充分理解后复述任务要求，并等待用户确认；然后再根据模板多轮确认写作规范、内容粒度、实验小结结构、必用工具、运行环境、源码/Notebook、截图来源、提交清单和 finalize 边界。
 - 用户选择默认时，必须把 `references/default-writing-parameters.md` 的默认值当成本次用户要求执行，并在 `fill.md` 中展开列出。
@@ -819,14 +819,15 @@ description: |
 4. 结合模板和任务书生成“已识别要求 + 来源 + 缺失/冲突项”，只对缺失或冲突项提问；模板已有明确规定不重复提问。需求确认和用户微调面板尽量合并，每轮最多 1–3 个强相关问题；用户选择默认时展开 `references/default-writing-parameters.md` 的具体默认值，并把它们当成本次用户要求。
 5. 创建 v2 会话，生成并确认 `requirements-summary.json`；记录每项规则的来源。首次课程配置的关键确认尽量不超过 5 轮，后续同模板实验尽量不超过 2 轮。
 6. 如果用户没有提出写作偏好，直接采用已确认的课程画像和默认参数，不为了形式再增加一轮提问。
-7. 生成 OOXML inventory；首次确认节点并编译 `template-profile.json`，后续复用并处理 confirm/blocked 候选。
-8. 读取课程 `writing-profile.json` 和可选 `style-card.json`，沿用会话 `variation_seed` 生成 `content-package.json`；正文和小结字段必须把已确认的字数范围写入每个 item 的 `quality`，由引擎在写入前强制校验；标题、编号等短字段可不设字数门禁。事实、格式和真实证据不得被风格变化覆盖。
-9. 状态到达 `content_ready` 后调用 v2 安全写入工具生成草稿，并生成质量自检摘要。
-10. 输出草稿后，让用户在 WPS 检查位置、表格、分页和图片，并记录 `review_id` 与反馈；用户可以直接指出段落要更详细、简短或换角度。
-11. 用户指出问题时回到内容阶段；用户批准后才能 Finalize。缺失截图、数据或源码时暂停，不编造。
-12. Finalize 前执行参考样本相似性门禁和质量合同自检；失败时标出原因并重写或请用户决定，不得绕过。
-13. 通过后整理终稿、确认文件命名和免责声明。
-14. 提供继续修改、审阅更新 diff 后更新 Skill、完成但不更新三个出口；临时报告反馈不自动升级为 Skill 规则。
+7. 生成 OOXML inventory 和标题树，把材料需要的章节与模板已有二/三级标题比较。标题不足时生成 `section-plan.json`，一次性展示“复用/新增”的结构差异；只有用户明确确认后才调用标题扩展工具生成模板副本，并对副本重新 inventory。无需扩展时跳过，不增加确认轮次。
+8. 首次确认节点并编译 `template-profile.json`，后续复用并处理 confirm/blocked 候选。
+9. 读取课程 `writing-profile.json` 和可选 `style-card.json`，沿用会话 `variation_seed` 生成 `content-package.json`；正文和小结字段必须把已确认的字数范围写入每个 item 的 `quality`，由引擎在写入前强制校验；标题、编号等短字段可不设字数门禁。事实、格式和真实证据不得被风格变化覆盖。
+10. 状态到达 `content_ready` 后调用 v2 安全写入工具生成草稿，并生成质量自检摘要。
+11. 输出草稿后，让用户在 WPS 检查位置、标题树、编号、目录、表格、分页和图片，并记录 `review_id` 与反馈；用户可以直接指出段落要更详细、简短或换角度。
+12. 用户指出问题时回到内容阶段；用户批准后才能 Finalize。缺失截图、数据或源码时暂停，不编造。
+13. Finalize 前执行参考样本相似性门禁和质量合同自检；失败时标出原因并重写或请用户决定，不得绕过。
+14. 通过后整理终稿、确认文件命名和免责声明。
+15. 提供继续修改、审阅更新 diff 后更新 Skill、完成但不更新三个出口；临时报告反馈不自动升级为 Skill 规则。
 """
 
     write_file(skill_dir / "SKILL.md", skill_md)
@@ -843,7 +844,7 @@ description: |
     )
     write_file(
         skill_dir / "references" / "fill-policy.md",
-        "# Fill Policy\n\n所有新任务使用 Lab Factory v2：先创建会话和 requirements-summary，再生成 OOXML inventory、编译或复用 template-profile，最后生成 content-package。auto 定位才能自动采用；confirm 必须展示候选并记录用户选择；blocked 禁止写入，不得回退到第一个字符串命中。内容写入使用 python-docx + lxml/OOXML 最小修改，保留非目标 DOCX 部件；docxtpl 只用于工厂控制的标准占位模板。v1 fill-map 顶层仍需 copy_mode: byte_for_byte_first、format_strategy: inherit_target_anchor、preserve_original: true，但只能通过迁移工具重新定位。第一次草稿不得改变原结构、字体、字号、内容、格式和排版。\n",
+        "# Fill Policy\n\n所有新任务使用 Lab Factory v2：先创建会话和 requirements-summary，再生成 OOXML inventory。完整阅读材料后若发现模板标题不足，先生成 section-plan 并让用户确认，只允许在副本中受控新增二级/三级标题，然后对副本重新 inventory；无需扩展时直接编译或复用 template-profile，最后生成 content-package。auto 定位才能自动采用；confirm 必须展示候选并记录用户选择；blocked 禁止写入，不得回退到第一个字符串命中。内容写入使用 python-docx + lxml/OOXML 最小修改，保留非目标 DOCX 部件；docxtpl 只用于工厂控制的标准占位模板。v1 fill-map 顶层仍需 copy_mode: byte_for_byte_first、format_strategy: inherit_target_anchor、preserve_original: true，但只能通过迁移工具重新定位。除用户确认的 section-plan 外，第一次草稿不得改变原结构、字体、字号、内容、格式和排版。\n",
     )
     write_file(
         skill_dir / "references" / "finalize-policy.md",
@@ -851,7 +852,7 @@ description: |
     )
     write_file(
         skill_dir / "references" / "formatting-notes.md",
-        "# Formatting Notes\n\n从 skill-spec.md、references/default-writing-parameters.md 和用户确认中沉淀格式规则。DOCX 处理必须先字节级复制原文件，新增内容继承目标段落、表格单元格、标题、图题和表题样式；无法可靠继承时停止并提示用户手动处理。第一次草稿不得改变原文结构、字体、字号、颜色、分页、目录、表格布局或已有内容。\n",
+        "# Formatting Notes\n\n从 skill-spec.md、references/default-writing-parameters.md 和用户确认中沉淀格式规则。DOCX 处理必须先字节级复制原文件，新增内容继承目标段落、表格单元格、标题、图题和表题样式；无法可靠继承时停止并提示用户手动处理。经用户确认的 section-plan 可以在同一正文容器中复制同级标题样式新增二级/三级标题；写入后必须检查编号并在 WPS 更新目录。除此之外第一次草稿不得改变原文结构、字体、字号、颜色、分页、目录、表格布局或已有内容。\n",
     )
     write_file(skill_dir / "references" / "tool-artifact-policy.md", TOOL_ARTIFACT_POLICY_MD)
     write_file(skill_dir / "references" / "document-understanding-policy.md", DOCUMENT_UNDERSTANDING_POLICY_MD)
@@ -870,6 +871,7 @@ description: |
     )
     for schema_name in [
         "requirements-summary-v2.schema.json",
+        "section-plan-v2.schema.json",
         "template-profile-v2.schema.json",
         "content-package-v2.schema.json",
         "writing-profile-v2.schema.json",

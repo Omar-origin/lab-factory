@@ -17,6 +17,7 @@ v2 把产品收敛为“可靠模板编译器”：首次把课程 DOCX 编译�
 ### v2 主流程
 
 - OOXML inventory：解析正文、表格单元格、页眉页脚、样式、编号和图片关系，并标记文本框、公式、域、修订等不可自动写入对象。
+- 受控标题扩展：宿主 AI 完整阅读材料后比较 `heading_tree`，生成需要用户确认的 `section-plan.json`；确认后仅在副本中新增二级/三级标题，继承同级样式并校验父级、顺序和编号。
 - `template-profile.json`：保存稳定结构路径、表格坐标、上下文和样式来源。
 - 定位评分：`auto >= 0.90` 且领先第二候选 `>= 0.15`；`confirm` 必须用户选择；`blocked` 禁止写入。
 - 最小 OOXML 写回：只修改被审计的 DOCX part，非目标部件内容哈希保持不变。
@@ -73,6 +74,8 @@ lab-factory apply-fill-map <fill-map.json> --output <草稿副本.docx>
 lab-factory inventory-v2 <模板.docx> --output <inventory.json>
 lab-factory create-profile-v2 <inventory.json> <template-profile.json> --subject <课程> --fields-json '<字段数组>'
 lab-factory propose-v2 <template-profile.json> <新模板.docx> --output <placement-plan.json>
+lab-factory section-plan-v2 <inventory.json> <section-plan.json> --proposal-json '<标题扩展提案>'
+lab-factory apply-section-plan-v2 <section-plan.json> <模板.docx> <扩展模板副本.docx> --confirmation '<用户确认摘要>'
 lab-factory apply-v2 <template-profile.json> <模板.docx> <content-package.json> <草稿.docx>
 lab-factory create-session-v2 <报告工作区> --subject <课程>
 lab-factory writing-profile-v2 <writing-profile.json> --subject <课程> --preset balanced
@@ -190,7 +193,7 @@ Claude Code 安装默认使用 `--claude-scope user`，让 MCP 对该用户的�
 - 必带：`python-docx`、`lxml`。
 - 可选增强：`docxtpl`、`mammoth`、`pywin32`。
 
-默认策略仍然是 `python-docx + lxml`：先完整复制原文件，再尽量按锚点填补，不主动重排、不主动删原内容。`docxtpl` 只适合受控占位符模板；`mammoth` 更适合只读抽取；`pywin32` 只适合 Windows + Microsoft Word 自动化增强。
+默认策略仍然是 `python-docx + lxml`：先完整复制原文件，再尽量按锚点填补，不主动重排、不主动删原内容。唯一结构扩展入口是用户确认的 `section-plan.json`，当前只支持正文普通段落中的二级/三级标题。`docxtpl` 只适合受控占位符模板；`mammoth` 更适合只读抽取；`pywin32` 只适合 Windows + Microsoft Word 自动化增强。
 
 ## 远程授权
 
