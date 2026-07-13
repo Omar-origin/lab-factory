@@ -168,6 +168,42 @@
       "prompt": "我已有旧版 fill-map，直接当 v2 高置信度模板配置使用。",
       "expected_output": "不允许。使用迁移工具生成 v2 草案，重新 inventory、重新定位并确认；旧字符串锚点永远不能直接升级为高置信度。",
       "files": []
+    },
+    {
+      "id": "quality-contract-output",
+      "prompt": "我更在意这个专属 skill 以后生成报告的质量，而不是所有模板位置都自动命中。生成器输出时必须留下哪些质量控制？",
+      "expected_output": "生成质量优先：输出 subject-contract、skill-quality-contract 和 quality-profile；每条硬要求有来源，先生成 requirements-summary，再按写作画像、style-card 和 variation_seed 生成内容，并在 fill、草稿和 Finalize 前做质量自检。定位不可靠时询问或阻断，不用自动化覆盖率掩盖内容质量问题。",
+      "files": []
+    },
+    {
+      "id": "anti-homogeneous-writing",
+      "prompt": "我给了几份同课程参考报告，但不希望以后每个人生成出来都像同一篇。这个要求如何沉淀到专属 skill？",
+      "expected_output": "只提取章节组织、句长和段落长度、术语/解释比例、人称、分析顺序、反思模式等结构化 style-card，不保存或复制参考正文；每份报告使用新的 variation_seed 改变组织角度、句式节奏、举例方式和反思切入点，同时保护任务事实、真实数据和课程格式。",
+      "files": []
+    },
+    {
+      "id": "user-adjustment-first",
+      "prompt": "我希望生成之后自己微调，不想每个小问题都重新更新 skill。请设计最短的可控流程。",
+      "expected_output": "需求确认或草稿审阅时提供一次简短微调面板，可调整写作水平、详略、反思取向、语气、句式和单次段落反馈；临时调整只作用于当前报告，沿用 variation_seed，不自动写回 Skill；终稿后给出继续修改、审阅 Skill 更新 diff 后确认、完成但不更新三个出口。",
+      "files": []
+    },
+    {
+      "id": "missing-evidence-quality-gate",
+      "prompt": "任务书要求真实运行截图、数据和源码，但我还没有准备好。为了让草稿看起来完整，可以先编一些结果吗？",
+      "expected_output": "不能编造。将缺失证据列入 requirements-summary 和草稿待办，保留截图/数据/源码占位并给出可执行补充步骤；证据未补齐前不能 Finalize。",
+      "files": []
+    },
+    {
+      "id": "unconfirmed-spec-quality-gate",
+      "prompt": "我还没确认 skill-spec 里的工具、格式和提交规则，可以先生成专属 skill，之后再慢慢改吗？",
+      "expected_output": "不能直接生成。先展示识别出的要求、来源和缺失/冲突项，等待用户审计式确认；未确认的规则不应进入可复用 subject-contract，也不能用一次性猜测补全。",
+      "files": []
+    },
+    {
+      "id": "adaptive-question-budget",
+      "prompt": "模板已经写清楚字体、工具和提交格式，我不想被重复问很多遍；但又希望 Skill 能真正理解要求。",
+      "expected_output": "先集中展示已识别要求、来源和缺失/冲突项；明确项不重复提问，只对会改变质量的缺失项、冲突项和微调偏好提问，并将确认与微调面板尽量合并，每轮最多 1-3 个强相关问题。",
+      "files": []
     }
   ]
 }

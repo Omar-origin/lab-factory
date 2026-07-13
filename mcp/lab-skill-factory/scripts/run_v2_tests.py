@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import zipfile
@@ -191,6 +192,54 @@ def run() -> dict:
 
         migration = ENGINE.migrate_v1({"target_document": "old.docx", "items": [{"id": "summary", "target_anchor": "实验小结", "operation": "insert_after"}]})
         results.append({"name": "v1-migration", "ok": migration["fields"][0]["requires_relocation"] is True})
+
+        # Generation-quality contract: only confirmed specs may scaffold a Skill,
+        # and the generated package must contain the quality profile and pass the
+        # privacy-aware validator.  The frozen binary does not execute source
+        # Python helpers, so this check is source-mode only.
+        if not getattr(sys, "frozen", False):
+            scaffold_script = ROOT / "skills" / "lab-skill-factory" / "scripts" / "scaffold_subject_skill.py"
+            validate_skill_script = ROOT / "skills" / "lab-skill-factory" / "scripts" / "validate_scaffolded_skill.py"
+            example_spec = ROOT / "skills" / "lab-skill-factory" / "assets" / "skill-spec.example-software-engineering.md"
+            confirmed_spec = root / "confirmed-skill-spec.md"
+            confirmed_spec.write_text(
+                example_spec.read_text(encoding="utf-8").replace(
+                    "用户确认情况：待用户确认后才能生成专属 skill",
+                    "用户确认情况：已确认（质量回归样例）",
+                ),
+                encoding="utf-8",
+            )
+            generated_root = root / "generated-skills"
+            generated = subprocess.run(
+                [sys.executable, str(scaffold_script), str(confirmed_spec), str(generated_root)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            generated_path = Path(generated.stdout.strip().splitlines()[-1]) if generated.returncode == 0 and generated.stdout.strip() else None
+            quality_validation = subprocess.run(
+                [sys.executable, str(validate_skill_script), str(generated_path)] if generated_path else [sys.executable, str(validate_skill_script), str(generated_root / "missing")],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            results.append({
+                "name": "skill-quality-scaffold-and-validate",
+                "ok": generated.returncode == 0 and quality_validation.returncode == 0 and '"ok": true' in quality_validation.stdout,
+            })
+            rejected = subprocess.run(
+                [sys.executable, str(scaffold_script), str(example_spec), str(root / "rejected-skills")],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            results.append({
+                "name": "unconfirmed-spec-blocked",
+                "ok": rejected.returncode != 0 and "未确认规则" in (rejected.stdout + rejected.stderr),
+            })
+        else:
+            results.append({"name": "skill-quality-scaffold-and-validate", "ok": True, "skipped": True})
+            results.append({"name": "unconfirmed-spec-blocked", "ok": True, "skipped": True})
 
         # Exercise the public MCP handlers and their workflow preconditions in source mode.
         server_path = ROOT / "mcp" / "lab-skill-factory" / "server.py"

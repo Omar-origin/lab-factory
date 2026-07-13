@@ -36,6 +36,19 @@ REQUIRED_HEADINGS = [
 ]
 
 
+def unresolved_confirmation_lines(markdown: str) -> list[str]:
+    patterns = [
+        re.compile(r"用户确认情况\s*[:：]\s*(?:待|未)", re.IGNORECASE),
+        re.compile(r"^\s*[-*]\s*来源\s*[:：]\s*(?:待|未|unknown)", re.IGNORECASE),
+        re.compile(r"^\s*[-*]\s*采用规则\s*[:：]\s*(?:待|未)", re.IGNORECASE),
+    ]
+    unresolved = [line.strip() for line in markdown.splitlines() if any(pattern.search(line) for pattern in patterns)]
+    confirmed = re.search(r"用户确认情况\s*[:：]\s*(?:已确认|用户已确认|确认通过)", markdown, re.IGNORECASE)
+    if not confirmed:
+        unresolved.append("用户确认情况：缺少“已确认”标记")
+    return unresolved
+
+
 def normalize_heading(text: str) -> str:
     return re.sub(r"\s+", " ", text.strip().strip("#").strip())
 
@@ -63,11 +76,14 @@ def main() -> int:
     markdown = path.read_text(encoding="utf-8", errors="replace")
     found = headings(markdown)
     missing = [heading for heading in REQUIRED_HEADINGS if heading not in found]
+    unresolved = unresolved_confirmation_lines(markdown)
     result.update(
         {
             "ok": not missing,
             "missing_headings": missing,
             "found_headings": sorted(found),
+            "confirmed": not unresolved,
+            "unresolved_confirmation": unresolved,
         }
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))

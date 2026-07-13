@@ -26,8 +26,30 @@ MCP 必须按标准 stdio MCP 暴露工具，不绑定 Codex-only 能力。Claud
 1. `skill-spec.md` 已由用户确认，且通过 `validate_skill_spec.py`。
 2. 使用版本化模板或 `scaffold_subject_skill.py` 生成完整 skill 包。
 3. 生成后运行 `validate_scaffolded_skill.py`。
-4. evals 至少覆盖 fill.md、完整阅读、原文保全、写作规范、截图占位、finalize 和受控迭代。
+4. evals 至少覆盖 fill.md、完整阅读、原文保全、写作规范、截图占位、finalize、受控迭代和生成质量自检。
 5. 输出给用户检查，用户确认后才安装或使用。
+
+## 生成质量优先
+
+自动定位的目标是安全底线，不是把所有不确定位置都强行自动化。生成器必须把质量重点放在“材料是否被正确理解、规则是否可追溯、内容是否完整具体、风格是否有受控差异、用户是否能低成本微调”上。
+
+每个生成的专属 Skill 必须额外包含：
+
+- `references/subject-contract.md`：从已确认 spec 提炼出的可复用主题规则摘要；不能原样嵌入完整 spec、个人路径或一次性报告内容。
+- `references/skill-quality-contract.md`：质量轴、生成前输入、用户微调面板、生成后自检、失败处理和受控迭代边界。
+- `references/quality-profile.json`：机器可校验的质量轴、变化维度、用户调整点、质量门禁和隐私禁止持久化项。
+- `assets/skill-quality-profile-v2.schema.json`：质量画像 Schema。
+
+生成 Skill 时至少落实以下质量轴：
+
+1. 任务与事实可追溯：硬要求、工具、提交物、真实数据和截图都要有来源。
+2. 结构与提交完整：覆盖填写区域、不可触碰区域、证据清单和最终提交物。
+3. 写作画像与表达质量：使用课程画像、风格卡和用户确认的写作规范。
+4. 报告间差异化：使用 `variation_seed` 改变组织角度、句式节奏、例子和反思切入点，不改变事实。
+5. 用户可检查与微调：需求确认和草稿审阅都有明确调整入口，临时调整不自动写回 Skill。
+6. 格式与隐私安全：源文件不变，非目标区域不变，Skill 不保存个人信息、样本正文、原始截图或一次性路径。
+
+质量自检必须在交付 `fill.md`、草稿和 Finalize 前分别执行。硬门禁失败时询问、留占位或阻断；不能用模板兼容分数替代内容质量，也不能为了自动覆盖率绕过用户确认。
 
 质量的关键不是用户电脑有没有 `skill-creator`，而是 spec 是否具体、默认参数是否展开、生成后校验是否通过、用户是否完成确认和反馈闭环。
 
@@ -86,8 +108,12 @@ references/user-guidance-policy.md
 references/default-writing-parameters.md
 references/compliance.md
 references/iteration-log.md
+references/subject-contract.md
+references/skill-quality-contract.md
+references/quality-profile.json
 assets/fill-template.md
 assets/fill-map.schema.json
+assets/skill-quality-profile-v2.schema.json
 evals/evals.json
 ```
 
@@ -140,5 +166,8 @@ references 保存可复用规则：
 - DOCX 工具选择合理，不把未知老师模板强行改成 docxtpl，不用 Mammoth 写回，不把 pywin32 作为 Mac 默认依赖。
 - 原文结构、字体、字号、内容、格式和排版默认不被修改。
 - 完成一次报告后提出受控迭代摘要，用户确认后才能更新专属 skill。
+- 生成质量优先：有任务来源、结构覆盖、写作画像、style card、variation_seed、用户微调面板和质量自检。
+- 参考样本只生成 style card，不保存正文；不同报告在事实不变的前提下应有受控表达差异。
+- 缺失真实数据、截图、源码或工具环境时必须生成占位和待办，不能为了完整度编造。
 - 草稿输出后询问用户是否满意或有问题，没问题时等待用户补齐图片/截图/数据后再进入二次修改。
 - finalize 前确认删除项、封面命名和文件命名方式，并在报告末尾添加免责声明。

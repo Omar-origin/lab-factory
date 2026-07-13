@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Lab Factory Skill Quality Profile v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "skill_name",
+    "scope_level",
+    "quality_priority",
+    "quality_axes",
+    "variation_controls",
+    "user_adjustment_points",
+    "quality_gates",
+    "privacy"
+  ],
+  "properties": {
+    "version": {"const": "2.0"},
+    "skill_name": {"type": "string", "minLength": 1},
+    "scope_level": {"type": "string", "enum": ["subject", "template", "experiment"]},
+    "quality_priority": {"const": "generation_quality_first"},
+    "quality_axes": {
+      "type": "array",
+      "minItems": 5,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name", "target", "evidence", "gate"],
+        "properties": {
+          "id": {"type": "string"},
+          "name": {"type": "string"},
+          "target": {"type": "string"},
+          "evidence": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+          "gate": {"type": "string", "enum": ["warn", "block", "ask_user"]}
+        }
+      }
+    },
+    "variation_controls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["variation_seed", "dimensions", "protected_facts"],
+      "properties": {
+        "variation_seed": {"type": "string", "minLength": 1},
+        "dimensions": {"type": "array", "minItems": 4, "items": {"type": "string"}},
+        "protected_facts": {"type": "array", "minItems": 3, "items": {"type": "string"}}
+      }
+    },
+    "user_adjustment_points": {
+      "type": "array",
+      "minItems": 4,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "question", "when", "default_allowed"],
+        "properties": {
+          "id": {"type": "string"},
+          "question": {"type": "string"},
+          "when": {"type": "string"},
+          "default_allowed": {"type": "boolean"}
+        }
+      }
+    },
+    "quality_gates": {
+      "type": "array",
+      "minItems": 6,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "check", "action"],
+        "properties": {
+          "id": {"type": "string"},
+          "check": {"type": "string"},
+          "action": {"type": "string", "enum": ["warn", "block", "ask_user"]}
+        }
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["style_card_only", "forbidden_persistence"],
+      "properties": {
+        "style_card_only": {"const": true},
+        "forbidden_persistence": {"type": "array", "minItems": 4, "items": {"type": "string"}}
+      }
+    }
+  }
+}

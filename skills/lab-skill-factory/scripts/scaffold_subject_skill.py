@@ -196,6 +196,290 @@ TOOL_ARTIFACT_POLICY_MD = """# Tool And Artifact Policy
 """
 
 
+QUALITY_PROFILE_SCHEMA = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Lab Factory Skill Quality Profile v2",
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "version",
+        "skill_name",
+        "scope_level",
+        "quality_priority",
+        "quality_axes",
+        "variation_controls",
+        "user_adjustment_points",
+        "quality_gates",
+        "privacy",
+    ],
+    "properties": {
+        "version": {"const": "2.0"},
+        "skill_name": {"type": "string", "minLength": 1},
+        "scope_level": {"type": "string", "enum": ["subject", "template", "experiment"]},
+        "quality_priority": {"const": "generation_quality_first"},
+        "quality_axes": {
+            "type": "array",
+            "minItems": 5,
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["id", "name", "target", "evidence", "gate"],
+                "properties": {
+                    "id": {"type": "string"},
+                    "name": {"type": "string"},
+                    "target": {"type": "string"},
+                    "evidence": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+                    "gate": {"type": "string", "enum": ["warn", "block", "ask_user"]},
+                },
+            },
+        },
+        "variation_controls": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["variation_seed", "dimensions", "protected_facts"],
+            "properties": {
+                "variation_seed": {"type": "string", "minLength": 1},
+                "dimensions": {"type": "array", "minItems": 4, "items": {"type": "string"}},
+                "protected_facts": {"type": "array", "minItems": 3, "items": {"type": "string"}},
+            },
+        },
+        "user_adjustment_points": {
+            "type": "array",
+            "minItems": 4,
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["id", "question", "when", "default_allowed"],
+                "properties": {
+                    "id": {"type": "string"},
+                    "question": {"type": "string"},
+                    "when": {"type": "string"},
+                    "default_allowed": {"type": "boolean"},
+                },
+            },
+        },
+        "quality_gates": {
+            "type": "array",
+            "minItems": 6,
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["id", "check", "action"],
+                "properties": {
+                    "id": {"type": "string"},
+                    "check": {"type": "string"},
+                    "action": {"type": "string", "enum": ["warn", "block", "ask_user"]},
+                },
+            },
+        },
+        "privacy": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["style_card_only", "forbidden_persistence"],
+            "properties": {
+                "style_card_only": {"const": True},
+                "forbidden_persistence": {"type": "array", "minItems": 4, "items": {"type": "string"}},
+            },
+        },
+    },
+}
+
+
+SKILL_QUALITY_CONTRACT_MD = """# Skill Quality Contract
+
+## 目标
+
+本 Skill 的第一目标是生成高质量、可复用、可调整的执行规则；这是“生成质量优先”，而不是把所有定位自动化。定位不确定时允许让用户选择或微调；生成内容不确定时必须追问、留占位或停止，不能靠编造补齐。
+
+## 六个质量轴
+
+1. **任务落地**：每个章节、工具、提交物和格式规则都能追溯到任务书、模板、用户确认或明确的默认值。
+2. **结构完整**：先建立任务地图、填写区域、不可触碰区域、证据要求和提交清单，再生成内容；不能只生成一篇看起来完整的正文。
+3. **写作质量**：复用课程写作画像和参考样本的结构化风格卡，控制详略、语气、术语密度和反思方式；不保存或复制参考正文。
+4. **差异化**：每份报告使用会话 `variation_seed`，允许用户调整写作水平、内容详略、反思取向、语言语气和句式节奏；变化不得覆盖事实、真实数据、格式和用户确认规则。
+5. **可检查与可微调**：输出应让用户能看懂、能纠正、能继续完成；需求确认、草稿审阅和终稿后都要有明确的反馈入口。
+6. **格式与隐私安全**：源文件和非目标区域保持不变；个人信息、样本正文、一次性异常和未确认规则不进入专属 Skill。
+
+## 生成前
+
+- 先读取 `references/subject-contract.md`，把其中的来源和限制当作本 Skill 的可复用边界。
+- 先生成结构化需求摘要，再补写作画像、风格卡和变化种子；没有证据的结果、截图和数据只生成占位与操作提示。
+- 只询问缺失项、冲突项和会改变输出质量的选择；不要重复询问模板已经明确的规则。需求确认与微调面板尽量合并在同一轮，每轮最多 1–3 个强相关问题。
+
+## 生成中
+
+- 用任务事实、模板结构和用户确认内容约束正文，用写作画像和风格卡控制表达，不用参考样本正文作为范文复制。
+- 每个内容块标明语义目的、事实来源、目标位置、内容粒度和证据依赖；无法确定时把问题暴露给用户。
+- 同一报告修改沿用原 `variation_seed`；新报告使用新种子。临时风格调整只作用于当前报告，不自动沉淀。
+
+## 用户微调面板
+
+在生成正文前给用户一次简短的调整面板，尽量与缺失项/冲突项确认合并，最多询问 1–3 个强相关问题：
+
+- 写作水平：基础、自然本科、较成熟。
+- 内容详略：精简、均衡、详细。
+- 反思取向：问题解决、学习过程、工程实践、批判改进。
+- 语言语气：朴素、规范、技术型、个人化。
+- 本次可选：更像说明书/更像实验记录、增加或减少小结长度、是否保留更多操作提示。
+
+用户可以直接说“按默认”或在草稿后指出具体段落怎么改。临时选择不能自动更新课程 Skill。
+
+## 生成后自检
+
+在交付 `fill.md` 或草稿前检查：
+
+- 是否完整覆盖任务要求、填写区域、提交物和不可触碰区域。
+- 是否所有事实、工具、数据和截图都有来源；缺失内容是否明确标出。
+- 是否执行了写作画像、风格卡和 `variation_seed`，且没有连续复制参考样本表达。
+- 是否符合已确认的格式和粒度；是否存在同质化段落、空泛套话或不必要的重复。
+- 是否给用户留下可检查、可修改的明确入口，并记录本阶段反馈。
+
+失败处理：事实/证据缺失则询问或留占位；规则冲突则列出冲突来源并让用户选择；复杂 DOCX 对象或定位不可靠则阻断自动写入并给人工处理说明。
+
+## 迭代边界
+
+报告完成后只提出“拟更新摘要”：只沉淀跨报告稳定、可复用且已被用户确认的规则；姓名、学号、样本正文、当前报告正文、一次性异常、个人文件路径和临时措辞不得写入。用户确认 diff 后才生成新版本，并保留回滚记录。
+"""
+
+
+CONTRACT_SECTIONS = [
+    "适配范围",
+    "触发词",
+    "输入材料",
+    "文档理解与任务复述",
+    "需求确认清单",
+    "需要填写的区域",
+    "不可触碰的区域",
+    "写作规范",
+    "内容粒度要求",
+    "工具环境与提交要求",
+    "参考案例使用边界",
+    "截图和绘图占位规则",
+    "验收测试",
+    "版本与迭代",
+]
+
+
+def sanitize_contract_text(text: str) -> str:
+    """Keep reusable rules while stripping paths, identifiers, and secret-like values."""
+    text = re.sub(r"https?://[^\s)]+", "<运行时地址>", text)
+    text = re.sub(r"(?:/Users/|/home/|[A-Za-z]:\\)[^\s)]+", "<本地路径>", text)
+    text = re.sub(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", "<邮箱>", text)
+    text = re.sub(r"\b\d{10,18}\b", "<编号>", text)
+    text = re.sub(
+        r"(?i)(姓名|学号|班级|序号|账号|密码|token|secret|api[_ -]?key)\s*[:：=]\s*[^\s，。；;]+",
+        lambda match: f"{match.group(1)}：<运行时提供>",
+        text,
+    )
+    return text.strip()
+
+
+def render_subject_contract(spec: str, title: str, scope_level: str) -> str:
+    lines = [
+        "# Subject Contract",
+        "",
+        "> 这是从用户确认的 `skill-spec.md` 提炼出的可复用规则摘要。原始 spec 不写入专属 Skill；任何未列出的规则都不能被 agent 自行补全。",
+        "",
+        f"- 适配主题：{sanitize_contract_text(title)}",
+        f"- 适配层级：{scope_level}",
+        "- 规则来源：用户确认、模板/任务书、或已展开的默认参数；每条规则保留来源语义。",
+        "",
+    ]
+    for section in CONTRACT_SECTIONS:
+        body = sanitize_contract_text(extract_section(spec, section))
+        if not body:
+            continue
+        lines.extend([f"## {section}", "", body[:8000], ""])
+    lines.extend(
+        [
+            "## 使用边界",
+            "",
+            "- 这份摘要用于生成质量和提问引导，不替代每次任务的完整材料阅读。",
+            "- 每次报告仍需重新读取任务书、模板、提交说明和本次用户材料，并生成 requirements-summary。",
+            "- 个人信息、原始截图、完整报告正文和一次性文件路径不属于可复用规则。",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
+def build_quality_profile(slug: str, scope_level: str) -> dict:
+    return {
+        "version": "2.0",
+        "skill_name": slug,
+        "scope_level": scope_level,
+        "quality_priority": "generation_quality_first",
+        "quality_axes": [
+            {
+                "id": "grounding",
+                "name": "任务与事实可追溯",
+                "target": "每个关键要求、事实和证据都有来源；缺失时不编造",
+                "evidence": ["subject-contract", "requirements-summary.json", "用户本次材料"],
+                "gate": "block",
+            },
+            {
+                "id": "coverage",
+                "name": "结构与提交完整",
+                "target": "覆盖任务、填写区域、不可触碰区域、证据和提交清单",
+                "evidence": ["subject-contract", "template-profile.json", "content-package.json"],
+                "gate": "block",
+            },
+            {
+                "id": "writing",
+                "name": "写作画像与表达质量",
+                "target": "按课程画像和本次调整生成自然、具体、符合粒度的文字",
+                "evidence": ["writing-profile.json", "style-card.json", "variation_seed"],
+                "gate": "warn",
+            },
+            {
+                "id": "differentiation",
+                "name": "报告间差异化",
+                "target": "改变组织角度、句式节奏、例子和反思切入点，但不改变事实",
+                "evidence": ["variation_seed", "style-card.json", "用户微调面板"],
+                "gate": "warn",
+            },
+            {
+                "id": "usability",
+                "name": "用户可检查与可微调",
+                "target": "每阶段给用户清晰的确认点、反馈入口和下一步",
+                "evidence": ["session-state.json", "review_id", "用户反馈摘要"],
+                "gate": "ask_user",
+            },
+            {
+                "id": "safety",
+                "name": "格式与隐私安全",
+                "target": "源文件不变，非目标区域不变，Skill 不保存个人信息和样本正文",
+                "evidence": ["template-profile.json", "写入审计", "quality-profile.json"],
+                "gate": "block",
+            },
+        ],
+        "variation_controls": {
+            "variation_seed": "session.variation_seed",
+            "dimensions": ["写作水平", "内容详略", "反思取向", "语言语气", "句式节奏", "举例角度"],
+            "protected_facts": ["任务书事实", "真实数据与截图", "课程格式", "用户确认规则"],
+        },
+        "user_adjustment_points": [
+            {"id": "level", "question": "这次希望写得基础、自然本科，还是更成熟？", "when": "requirements_confirmed", "default_allowed": True},
+            {"id": "detail", "question": "内容要精简、均衡还是详细？", "when": "requirements_confirmed", "default_allowed": True},
+            {"id": "reflection", "question": "小结更偏问题解决、学习过程、工程实践还是批判改进？", "when": "requirements_confirmed", "default_allowed": True},
+            {"id": "tone", "question": "语言保持朴素、规范、技术型还是更个人化？", "when": "requirements_confirmed", "default_allowed": True},
+            {"id": "draft_feedback", "question": "草稿哪些地方要更详细、简短、换角度或保留占位？", "when": "draft_reviewed", "default_allowed": False},
+        ],
+        "quality_gates": [
+            {"id": "source_coverage", "check": "每项硬要求有来源和状态", "action": "block"},
+            {"id": "missing_evidence", "check": "真实数据、截图、源码缺失时有占位和待办", "action": "block"},
+            {"id": "style_application", "check": "写作画像、风格卡和 variation_seed 已应用", "action": "warn"},
+            {"id": "anti_copy", "check": "参考样本仅用于风格，未复制正文或独特表达", "action": "block"},
+            {"id": "user_checkpoint", "check": "需求、草稿、终稿和 Skill 更新均有用户确认入口", "action": "ask_user"},
+            {"id": "format_safety", "check": "模板配置、写入审计和非目标部件保全通过", "action": "block"},
+            {"id": "privacy", "check": "Skill 中没有个人信息、原始路径或一次性报告内容", "action": "block"},
+        ],
+        "privacy": {
+            "style_card_only": True,
+            "forbidden_persistence": ["姓名/学号/班级", "完整报告正文", "参考样本正文", "原始截图与数据", "账号/密码/token", "个人文件路径"],
+        },
+    }
+
+
 DOCUMENT_UNDERSTANDING_POLICY_MD = """# Document Understanding Policy
 
 ## 核心门禁
@@ -326,6 +610,19 @@ def write_file(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
+def unresolved_spec_lines(markdown: str) -> list[str]:
+    patterns = [
+        re.compile(r"用户确认情况\s*[:：]\s*(?:待|未)", re.IGNORECASE),
+        re.compile(r"^\s*[-*]\s*来源\s*[:：]\s*(?:待|未|unknown)", re.IGNORECASE),
+        re.compile(r"^\s*[-*]\s*采用规则\s*[:：]\s*(?:待|未)", re.IGNORECASE),
+    ]
+    unresolved = [line.strip() for line in markdown.splitlines() if any(pattern.search(line) for pattern in patterns)]
+    confirmed = re.search(r"用户确认情况\s*[:：]\s*(?:已确认|用户已确认|确认通过)", markdown, re.IGNORECASE)
+    if not confirmed:
+        unresolved.append("用户确认情况：缺少“已确认”标记")
+    return unresolved
+
+
 def starter_evals(slug: str, title: str) -> dict:
     return {
         "skill_name": slug,
@@ -384,6 +681,36 @@ def starter_evals(slug: str, title: str) -> dict:
                 "expected_output": "先询问草稿是否可以或有问题；没问题时等待用户补齐截图/数据，用户回来后再二次修改、调整排版、删除确认可删内容、添加文末免责声明、询问文件命名方式并输出最终版；最终版确认后才提出受控迭代。",
                 "files": [],
             },
+            {
+                "id": "quality-contract-and-self-review",
+                "prompt": "我更在意这个专属 skill 以后生成内容的质量，不要求所有模板位置都自动命中。生成器应该怎样保证质量？",
+                "expected_output": "说明生成质量优先：使用 subject-contract、requirements-summary、writing-profile、style-card 和 variation_seed；在交付前检查任务覆盖、事实来源、内容粒度、风格差异、证据缺失、用户可调整入口和隐私安全，并在不确定时询问或阻断。",
+                "files": [],
+            },
+            {
+                "id": "anti-homogeneous-writing",
+                "prompt": "我给你几份同课程参考报告，但不希望以后每个人生成出来都像同一篇。请把这个要求沉淀到 skill。",
+                "expected_output": "只提取结构化 style-card，不保存或复制参考正文；使用课程写作画像和每报告 variation_seed，从组织角度、句式节奏、举例方式和反思切入点产生受控差异，同时保护任务事实、真实数据和课程格式。",
+                "files": [],
+            },
+            {
+                "id": "user-adjustment-panel",
+                "prompt": "我希望生成后自己微调，不想每个小问题都重新更新 skill。流程应该怎么设计？",
+                "expected_output": "在需求确认和草稿审阅时提供简短的用户调整面板，可调整写作水平、详略、反思取向、语气、句式和单次段落反馈；临时调整只作用于当前报告，不自动更新课程 skill，最终再提供完成但不更新或审阅 diff 后更新的出口。",
+                "files": [],
+            },
+            {
+                "id": "missing-evidence-quality-gate",
+                "prompt": "任务书要求真实运行截图和数据，但我还没有准备好。为了让报告看起来完整，可以先编一些结果吗？",
+                "expected_output": "不能编造；应保留截图/数据占位、说明需要用户提供或运行的材料，并把缺失证据列入 requirements-summary 和草稿待办，证据未补齐前不能 Finalize。",
+                "files": [],
+            },
+            {
+                "id": "adaptive-question-budget",
+                "prompt": "模板已经写清楚字体、工具和提交格式，我不想被重复问很多遍；但又希望 Skill 能真正理解要求。",
+                "expected_output": "先集中展示已识别要求、来源和缺失/冲突项；明确项不重复提问，只对会改变质量的缺失项、冲突项和微调偏好提问，并将确认与微调面板尽量合并，每轮最多 1-3 个强相关问题。",
+                "files": [],
+            },
         ],
     }
 
@@ -403,26 +730,36 @@ def main() -> int:
     spec_path = Path(args.skill_spec).expanduser().resolve()
     output_root = Path(args.output_dir).expanduser().resolve()
     spec = spec_path.read_text(encoding="utf-8", errors="replace")
+    unresolved = unresolved_spec_lines(spec)
+    if unresolved:
+        raise SystemExit(
+            "skill-spec.md 仍有未确认规则，不能生成专属 Skill；请先完成用户确认：\n- "
+            + "\n- ".join(unresolved[:8])
+        )
     scope_level = args.scope_level or ("experiment" if wants_experiment_level(spec) else "subject")
     title, source_title = derive_skill_title(spec, scope_level)
     slug_prefix = "user-experiment" if scope_level == "experiment" else "user-subject"
-    slug = args.slug or f"{slug_prefix}-{slugify(title)}"
+    safe_title = sanitize_contract_text(title)
+    safe_source_title = sanitize_contract_text(source_title)
+    slug = args.slug or f"{slug_prefix}-{slugify(safe_title)}"
     skill_dir = output_root / slug
+    subject_contract = render_subject_contract(spec, safe_title, scope_level)
+    quality_profile = build_quality_profile(slug, scope_level)
 
     skill_md = f"""---
 name: {slug}
 description: |
-  {title} 专属实验报告 skill。当用户要求完成该科目、该模板系列或同类实验报告时使用。
+  {safe_title} 专属实验报告 skill。当用户要求完成该科目、该模板系列或同类实验报告时使用。
   使用 Lab Factory v2 的结构化需求摘要、模板配置、内容包和持久化会话；低置信度位置经用户确认后才写入副本。
 ---
 
-# {title} 专属实验报告 Skill
+# {safe_title} 专属实验报告 Skill
 
 ## 来源
 
 本 skill 由 Lab Skill Factory 根据已确认的 skill-spec.md 生成。后续修改必须通过用户确认后的受控迭代完成。
 
-来源 spec 标题：{source_title}
+来源 spec 标题：{safe_source_title}
 
 默认适配层级：{"实验级" if scope_level == "experiment" else "科目级/模板系列级"}
 
@@ -432,6 +769,13 @@ description: |
 - 不依赖 Codex-only 指令。
 - Claude Code、Codex 或其他支持本地 skill/Markdown 指令的 agent 均可读取执行。
 - 如果客户端不能自动发现 skill，用户可以把本 skill 路径提供给 agent，让 agent 先读取 `SKILL.md`。
+
+## 生成质量优先
+
+- 先读取 `references/subject-contract.md`、`references/skill-quality-contract.md` 和 `references/quality-profile.json`，再开始本次任务。
+- 生成质量优先于无条件自动定位：重点检查任务覆盖、事实来源、写作画像、风格差异、证据缺失和用户可调入口。
+- 每份报告使用 `variation_seed`，允许用户临时调整写作水平、详略、反思取向和语气；临时调整不自动更新 Skill。
+- 交付前必须执行质量自检和质量合同中的门禁；无法证明的内容留占位或请求用户补充，不用模板相似度掩盖内容质量问题。
 
 ## 最高优先级规则
 
@@ -454,38 +798,45 @@ description: |
 
 ## Workflow
 
-读取 `references/document-understanding-policy.md`、`references/docx-tooling-policy.md` 和 `references/workflow.md` 执行。
+读取 `references/subject-contract.md`、`references/skill-quality-contract.md`、`references/quality-profile.json`、`references/document-understanding-policy.md`、`references/docx-tooling-policy.md` 和 `references/workflow.md` 执行。
 """
 
     workflow = f"""# Workflow
 
-## Skill Spec
+## Subject Contract
 
-本 skill 按以下 spec 执行：
+先读取 `references/subject-contract.md`。它是从用户确认的 spec 提炼出的可复用规则摘要，不包含原始路径、个人信息或完整报告正文；未列出的规则必须回到本次材料和用户确认，不得自行补全。
 
-```markdown
-{spec}
-```
+## Quality Contract
+
+先读取 `references/skill-quality-contract.md` 和 `references/quality-profile.json`。每次生成都要优先提升任务落地、结构完整、写作质量、报告差异化和用户可调整性；质量门禁失败时询问、留占位或阻断。
 
 ## Fixed Flow
 
 1. 读取并从头到尾完整浏览用户材料，包括模板、任务书、评分标准和文末提交说明。
 2. 复述任务要求：实验目标、任务步骤、填写范围、不可触碰区域、工具环境、源码/Notebook、截图来源、提交清单、命名规则和缺失材料。
 3. 等待用户确认理解无误；如果用户指出误解，先修正复述。
-4. 结合模板和任务书，多轮确认填写范围、不可触碰范围、写作规范、内容粒度、实验小结结构、必用工具、运行环境、源码/Notebook、截图来源、提交清单和 finalize 边界；用户选择默认时展开 `references/default-writing-parameters.md` 的具体默认值，并把它们当成本次用户要求。
-5. 创建 v2 会话，生成并确认 `requirements-summary.json`；只追问缺失和冲突项。
-6. 生成 OOXML inventory；首次确认节点并编译 `template-profile.json`，后续复用并处理 confirm/blocked 候选。
-7. 读取课程 `writing-profile.json` 和可选 `style-card.json`，沿用会话 `variation_seed` 生成 `content-package.json`。
-8. 状态到达 `content_ready` 后调用 v2 安全写入工具生成草稿。
-9. 输出草稿后，让用户在 WPS 检查位置、表格、分页和图片，并记录 `review_id` 与反馈。
-10. 用户指出问题时回到内容阶段；用户批准后才能 Finalize。
-11. Finalize 前执行参考样本相似性门禁；失败时标出命中并重写，不得绕过。
-12. 通过后整理终稿、确认文件命名和免责声明。
-13. 提供继续修改、审阅更新 diff 后更新 Skill、完成但不更新三个出口。
+4. 结合模板和任务书生成“已识别要求 + 来源 + 缺失/冲突项”，只对缺失或冲突项提问；模板已有明确规定不重复提问。需求确认和用户微调面板尽量合并，每轮最多 1–3 个强相关问题；用户选择默认时展开 `references/default-writing-parameters.md` 的具体默认值，并把它们当成本次用户要求。
+5. 创建 v2 会话，生成并确认 `requirements-summary.json`；记录每项规则的来源。首次课程配置的关键确认尽量不超过 5 轮，后续同模板实验尽量不超过 2 轮。
+6. 如果用户没有提出写作偏好，直接采用已确认的课程画像和默认参数，不为了形式再增加一轮提问。
+7. 生成 OOXML inventory；首次确认节点并编译 `template-profile.json`，后续复用并处理 confirm/blocked 候选。
+8. 读取课程 `writing-profile.json` 和可选 `style-card.json`，沿用会话 `variation_seed` 生成 `content-package.json`；事实、格式和真实证据不得被风格变化覆盖。
+9. 状态到达 `content_ready` 后调用 v2 安全写入工具生成草稿，并生成质量自检摘要。
+10. 输出草稿后，让用户在 WPS 检查位置、表格、分页和图片，并记录 `review_id` 与反馈；用户可以直接指出段落要更详细、简短或换角度。
+11. 用户指出问题时回到内容阶段；用户批准后才能 Finalize。缺失截图、数据或源码时暂停，不编造。
+12. Finalize 前执行参考样本相似性门禁和质量合同自检；失败时标出原因并重写或请用户决定，不得绕过。
+13. 通过后整理终稿、确认文件命名和免责声明。
+14. 提供继续修改、审阅更新 diff 后更新 Skill、完成但不更新三个出口；临时报告反馈不自动升级为 Skill 规则。
 """
 
     write_file(skill_dir / "SKILL.md", skill_md)
     write_file(skill_dir / "references" / "workflow.md", workflow)
+    write_file(skill_dir / "references" / "subject-contract.md", subject_contract)
+    write_file(skill_dir / "references" / "skill-quality-contract.md", SKILL_QUALITY_CONTRACT_MD)
+    write_file(
+        skill_dir / "references" / "quality-profile.json",
+        json.dumps(quality_profile, ensure_ascii=False, indent=2) + "\n",
+    )
     write_file(
         skill_dir / "references" / "v2-workflow.md",
         (FACTORY_ROOT / "references" / "v2-workflow.md").read_text(encoding="utf-8"),
@@ -508,7 +859,7 @@ description: |
     write_file(skill_dir / "references" / "default-writing-parameters.md", DEFAULT_WRITING_PARAMETERS_MD)
     write_file(skill_dir / "references" / "user-guidance-policy.md", USER_GUIDANCE_POLICY_MD)
     write_file(skill_dir / "references" / "compliance.md", "# Compliance\n\n不伪造数据，不复制参考案例，不保存隐私。\n")
-    write_file(skill_dir / "references" / "iteration-log.md", "# Iteration Log\n\n## 0.1.0\n\n- Initial scaffold generated from confirmed skill spec.\n")
+    write_file(skill_dir / "references" / "iteration-log.md", "# Iteration Log\n\n## 0.1.0\n\n- Initial scaffold generated from confirmed skill spec.\n- Quality priority: grounding, coverage, writing quality, differentiation, usability and safety.\n- Temporary user adjustments are not persisted without an explicit Skill update review.\n")
     write_file(
         skill_dir / "assets" / "fill-template.md",
         "# 填补内容预览\n\n## 文档理解与任务复述\n\n- 实验目标：\n- 需要完成的任务：\n- 关键要求：\n- 仍需用户确认或补充：\n\n## 填写范围\n\n## 不可触碰范围\n\n## 写作规范确认\n\n- 正文字体/字号/颜色：默认小四，中文宋体，英文 Times New Roman，黑色；除非明确覆盖，不使用其他字体或颜色。\n- 正文首行缩进：默认度量值 2，除非任务书、模板或用户明确覆盖。\n- 标题格式：\n- 行间距/段前段后：\n- 表格/图题/截图占位样式：\n- 来源：confirmed_by_user / default_confirmed / derived_from_template\n\n## 内容粒度确认\n\n- 正文小点：默认每点约 150-200 字，除非任务书/用户另有要求。\n- 实验小结结构：按模板栏目分点；常见“问题和解决办法、心得体会、意见与建议”三栏按每栏 3 小点，每点约 100 字。\n- 截图/表格说明：普通说明点默认约 150-200 字；只依赖真实截图或数据时保留占位。\n- 来源：confirmed_by_user / default_confirmed / derived_from_template\n\n## 工具环境与提交确认\n\n- 必用工具/运行环境：\n- 源码或 Notebook：\n- 截图来源：\n- 提交清单：\n- 压缩包和命名规则：\n- 来源：confirmed_by_user / default_confirmed / derived_from_template\n\n## 正文内容\n\n## 实验小结\n\n## 截图/绘图占位\n\n请查看，是否存在什么问题？有哪些需要修改的地方？\n",
@@ -529,8 +880,12 @@ description: |
             (FACTORY_ROOT / "assets" / schema_name).read_text(encoding="utf-8"),
         )
     write_file(
+        skill_dir / "assets" / "skill-quality-profile-v2.schema.json",
+        json.dumps(QUALITY_PROFILE_SCHEMA, ensure_ascii=False, indent=2) + "\n",
+    )
+    write_file(
         skill_dir / "evals" / "evals.json",
-        json.dumps(starter_evals(slug, title), ensure_ascii=False, indent=2) + "\n",
+        json.dumps(starter_evals(slug, safe_title), ensure_ascii=False, indent=2) + "\n",
     )
     print(skill_dir)
     return 0

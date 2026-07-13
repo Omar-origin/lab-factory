@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 
 
@@ -22,6 +23,9 @@ REQUIRED_FILES = [
     "references/compliance.md",
     "references/iteration-log.md",
     "references/v2-workflow.md",
+    "references/subject-contract.md",
+    "references/skill-quality-contract.md",
+    "references/quality-profile.json",
     "assets/fill-template.md",
     "assets/fill-map.schema.json",
     "assets/requirements-summary-v2.schema.json",
@@ -29,6 +33,7 @@ REQUIRED_FILES = [
     "assets/content-package-v2.schema.json",
     "assets/writing-profile-v2.schema.json",
     "assets/style-card-v2.schema.json",
+    "assets/skill-quality-profile-v2.schema.json",
     "evals/evals.json",
 ]
 
@@ -53,6 +58,10 @@ REQUIRED_SKILL_PHRASES = [
     "template-profile.json",
     "content-package.json",
     "variation_seed",
+    "生成质量优先",
+    "quality-profile.json",
+    "用户临时调整",
+    "质量自检",
     "WPS",
     "完成但不更新",
 ]
@@ -96,6 +105,18 @@ REQUIRED_REFERENCE_PHRASES = {
         "相似性门禁",
         "完成且不更新",
     ],
+    "references/subject-contract.md": [
+        "规则摘要",
+        "每次报告",
+        "个人信息",
+    ],
+    "references/skill-quality-contract.md": [
+        "生成质量优先",
+        "variation_seed",
+        "用户微调面板",
+        "生成后自检",
+        "不得写入",
+    ],
 }
 
 
@@ -126,6 +147,74 @@ def validate_evals(path: Path) -> list[str]:
     for topic in expected_topics:
         if topic not in serialized:
             errors.append(f"evals/evals.json missing topic: {topic}")
+    return errors
+
+
+def validate_quality_profile(path: Path) -> list[str]:
+    errors: list[str] = []
+    try:
+        data = json.loads(read_text(path))
+    except json.JSONDecodeError as exc:
+        return [f"references/quality-profile.json is invalid JSON: {exc}"]
+    if not isinstance(data, dict):
+        return ["references/quality-profile.json must contain an object"]
+    if data.get("version") != "2.0":
+        errors.append("quality profile version must be 2.0")
+    if data.get("quality_priority") != "generation_quality_first":
+        errors.append("quality profile must prioritize generation_quality_first")
+    if data.get("scope_level") not in {"subject", "template", "experiment"}:
+        errors.append("quality profile scope_level is invalid")
+    axes = data.get("quality_axes")
+    if not isinstance(axes, list) or len(axes) < 5:
+        errors.append("quality profile needs at least 5 quality axes")
+    else:
+        required_axes = {"grounding", "coverage", "writing", "differentiation", "usability", "safety"}
+        actual_axes = {item.get("id") for item in axes if isinstance(item, dict)}
+        missing_axes = sorted(required_axes - actual_axes)
+        if missing_axes:
+            errors.append(f"quality profile missing axes: {', '.join(missing_axes)}")
+    variation = data.get("variation_controls")
+    if not isinstance(variation, dict):
+        errors.append("quality profile missing variation_controls")
+    else:
+        if variation.get("variation_seed") != "session.variation_seed":
+            errors.append("variation_controls must use session.variation_seed")
+        if not isinstance(variation.get("dimensions"), list) or len(variation["dimensions"]) < 4:
+            errors.append("variation_controls needs at least 4 dimensions")
+        if not isinstance(variation.get("protected_facts"), list) or len(variation["protected_facts"]) < 3:
+            errors.append("variation_controls needs protected facts")
+    points = data.get("user_adjustment_points")
+    if not isinstance(points, list) or len(points) < 4:
+        errors.append("quality profile needs at least 4 user adjustment points")
+    gates = data.get("quality_gates")
+    if not isinstance(gates, list) or len(gates) < 6:
+        errors.append("quality profile needs at least 6 quality gates")
+    privacy = data.get("privacy")
+    if not isinstance(privacy, dict) or privacy.get("style_card_only") is not True:
+        errors.append("quality profile must enforce style-card-only reference persistence")
+    elif not isinstance(privacy.get("forbidden_persistence"), list) or len(privacy["forbidden_persistence"]) < 4:
+        errors.append("quality profile needs forbidden persistence categories")
+    return errors
+
+
+def validate_no_sensitive_leaks(skill_dir: Path) -> list[str]:
+    """Reject obvious source paths, identifiers, or secret values in generated assets."""
+    errors: list[str] = []
+    path_pattern = re.compile(r"(?:/Users/|/home/|[A-Za-z]:\\)")
+    identifier_pattern = re.compile(
+        r"(?i)(姓名|学号|班级|序号|账号|密码|token|secret|api[_ -]?key)\s*[:：=]\s*(?!<)(?!用户)(?!运行时)[^\s，。；;]+"
+    )
+    number_pattern = re.compile(r"\b\d{10,18}\b")
+    for path in sorted(skill_dir.rglob("*")):
+        if not path.is_file() or path.suffix.lower() not in {".md", ".json"}:
+            continue
+        text = read_text(path)
+        if path_pattern.search(text):
+            errors.append(f"generated skill contains a local path: {path.relative_to(skill_dir)}")
+        if identifier_pattern.search(text):
+            errors.append(f"generated skill contains a personal/secret value: {path.relative_to(skill_dir)}")
+        if number_pattern.search(text):
+            errors.append(f"generated skill contains a long identifier: {path.relative_to(skill_dir)}")
     return errors
 
 
@@ -165,6 +254,11 @@ def validate(skill_dir: Path) -> dict:
     evals_path = skill_dir / "evals" / "evals.json"
     if evals_path.exists():
         errors.extend(validate_evals(evals_path))
+
+    quality_profile_path = skill_dir / "references" / "quality-profile.json"
+    if quality_profile_path.exists():
+        errors.extend(validate_quality_profile(quality_profile_path))
+    errors.extend(validate_no_sensitive_leaks(skill_dir))
 
     return {
         "ok": not errors,

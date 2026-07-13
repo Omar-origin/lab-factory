@@ -1077,6 +1077,12 @@ def tool_scaffold_subject_skill(args: dict[str, Any]) -> dict[str, Any]:
                 "skill-spec.md 还没有通过校验，不能生成专属 skill。"
                 f"缺失章节：{validation.get('missing_headings') or validation.get('error')}"
             )
+        if not validation.get("confirmed", False):
+            unresolved = validation.get("unresolved_confirmation") or ["存在未确认的规则"]
+            raise ToolError(
+                "skill-spec.md 仍有未确认规则，不能生成专属 skill；请先让用户确认："
+                + "；".join(unresolved[:8])
+            )
 
     command_args = [resolve_user_path(skill_spec_path), resolve_user_path(output_dir)]
     slug = args.get("slug")
@@ -1097,7 +1103,8 @@ def tool_scaffold_subject_skill(args: dict[str, Any]) -> dict[str, Any]:
         "quality_validation": validation,
         "message": (
             "专属 skill 骨架已生成并完成内置质量校验。下一步请让用户检查 skill 的触发范围、写作规范、"
-            "填补区域、不可触碰区域、工具环境和 finalize 流程；确认后再安装或使用。"
+            "填补区域、不可触碰区域、工具环境和 finalize 流程；同时检查质量画像、用户微调入口和质量自检合同；"
+            "确认后再安装或使用。"
             if validation.get("ok")
             else "专属 skill 已生成，但内置质量校验未通过。请先修正 quality_validation.errors，再安装或使用。"
         ),
