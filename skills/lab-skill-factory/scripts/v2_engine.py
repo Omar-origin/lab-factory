@@ -656,16 +656,101 @@ def confirmed_profile(
     return updated
 
 
-def paragraph_with_text(source: etree._Element, text: str) -> etree._Element:
+def active_numbering(paragraph: etree._Element) -> bool:
+    num_id = child_value(paragraph, "./w:pPr/w:numPr/w:numId")
+    return num_id not in {None, "0"}
+
+
+def prompt_colored(paragraph: etree._Element) -> bool:
+    colors = paragraph.xpath(
+        "./w:pPr/w:rPr/w:color/@w:val | ./w:r/w:rPr/w:color/@w:val",
+        namespaces=NS,
+    )
+    return any(str(value).lower() not in {"auto", "000000", "00000000"} for value in colors)
+
+
+def normalize_content_run_color(run: etree._Element) -> None:
+    """Turn explicit prompt colors into black while preserving font and size."""
+    rpr = run.find(f"{W}rPr")
+    if rpr is None:
+        return
+    color = rpr.find(f"{W}color")
+    if color is None:
+        return
+    value = (color.get(f"{W}val") or "").lower()
+    if value not in {"", "auto", "000000", "00000000"}:
+        color.set(f"{W}val", "000000")
+
+
+def looks_like_heading(paragraph: etree._Element) -> bool:
+    text = element_text(paragraph)
+    style_id = (child_value(paragraph, "./w:pPr/w:pStyle") or "").lower()
+    if active_numbering(paragraph) or paragraph.find(f"./{W}pPr/{W}outlineLvl") is not None:
+        return True
+    if style_id.startswith("heading") or "标题" in style_id:
+        return True
+    if text and len(text) <= 40 and re.match(r"^\d+(?:\.\d+)*\s+\S+", text):
+        return True
+    sizes = paragraph.xpath("./w:pPr/w:rPr/w:sz/@w:val | ./w:r/w:rPr/w:sz/@w:val", namespaces=NS)
+    return bool(text and len(text) <= 40 and any(str(value).isdigit() and int(value) > 28 for value in sizes))
+
+
+def insert_style_reference(source: etree._Element) -> etree._Element:
+    """Find nearby body formatting instead of copying a numbered heading."""
+    candidates: list[tuple[int, etree._Element]] = []
+    directions = ((source.itersiblings(), 2), (source.itersiblings(preceding=True), 0))
+    for siblings, direction_bonus in directions:
+        for distance, candidate in enumerate(siblings, start=1):
+            if distance > 10:
+                break
+            if candidate.tag != f"{W}p":
+                continue
+            if unsupported_reasons(candidate) or looks_like_heading(candidate) or prompt_colored(candidate):
+                continue
+            text = element_text(candidate)
+            score = direction_bonus - distance
+            if not text:
+                score += 100
+            elif len(text) >= 30:
+                score += 40
+            sizes = candidate.xpath(
+                "./w:pPr/w:rPr/w:sz/@w:val | ./w:r/w:rPr/w:sz/@w:val",
+                namespaces=NS,
+            )
+            if any(str(value).isdigit() and int(value) <= 24 for value in sizes):
+                score += 10
+            candidates.append((score, candidate))
+    return max(candidates, key=lambda item: item[0])[1] if candidates else source
+
+
+def paragraph_with_text(
+    source: etree._Element,
+    text: str,
+    *,
+    strip_numbering: bool = False,
+    normalize_color: bool = False,
+) -> etree._Element:
     paragraph = copy.deepcopy(source)
+    for attribute in list(paragraph.attrib):
+        if etree.QName(attribute).localname in {"paraId", "textId"}:
+            del paragraph.attrib[attribute]
     ppr = paragraph.find(f"{W}pPr")
     reference_rpr = paragraph.find(f".//{W}rPr")
+    if strip_numbering and ppr is not None:
+        num_pr = ppr.find(f"{W}numPr")
+        if num_pr is not None:
+            ppr.remove(num_pr)
+        outline = ppr.find(f"{W}outlineLvl")
+        if outline is not None:
+            ppr.remove(outline)
     for child in list(paragraph):
         if child is not ppr:
             paragraph.remove(child)
     run = etree.SubElement(paragraph, f"{W}r")
     if reference_rpr is not None:
         run.append(copy.deepcopy(reference_rpr))
+    if normalize_color:
+        normalize_content_run_color(run)
     text_node = etree.SubElement(run, f"{W}t")
     if text.startswith(" ") or text.endswith(" "):
         text_node.set(XML_SPACE, "preserve")
@@ -695,9 +780,86 @@ def replace_placeholder(paragraph: etree._Element, placeholder: str, content: st
     prefix = first_value[: max(0, start - first_left)]
     suffix = (last.text or "")[max(0, end - last_left) :]
     first.text = prefix + content + suffix
+    first_run = ancestor(first, "r")
+    if first_run is not None:
+        normalize_content_run_color(first_run)
     for node, _, _ in touched[1:]:
         node.text = ""
     return True
+
+
+def content_character_count(value: str) -> int:
+    return len(re.sub(r"\s+", "", value))
+
+
+def validate_content_quality(field_id: str, item: dict[str, Any], value: str) -> None:
+    quality = item.get("quality")
+    if quality is None:
+        return
+    if not isinstance(quality, dict):
+        raise V2Error(f"{field_id}: quality must be an object")
+    unit = quality.get("unit", "whole")
+    minimum = quality.get("min_chars")
+    maximum = quality.get("max_chars")
+    if unit not in {"whole", "per_paragraph"}:
+        raise V2Error(f"{field_id}: quality.unit must be whole or per_paragraph")
+    if not isinstance(minimum, int) or minimum < 1:
+        raise V2Error(f"{field_id}: quality.min_chars must be a positive integer")
+    if not isinstance(maximum, int) or maximum < minimum:
+        raise V2Error(f"{field_id}: quality.max_chars must be >= min_chars")
+    segments = [value]
+    if unit == "per_paragraph":
+        segments = [line.strip() for line in value.splitlines() if line.strip()]
+    for index, segment in enumerate(segments, start=1):
+        length = content_character_count(segment)
+        if length < minimum or length > maximum:
+            label = f"paragraph {index}" if unit == "per_paragraph" else "content"
+            raise V2Error(
+                f"{field_id}: {label} has {length} characters; expected {minimum}-{maximum}"
+            )
+
+
+def template_cue_reasons(value: str) -> list[str]:
+    reasons = []
+    if re.search(r"(?i)(?:\b|_)x{2,}(?:\b|_)", value) or "XXX" in value.upper():
+        reasons.append("xxx_placeholder")
+    if re.search(r"<[^<>]{1,120}>", value):
+        reasons.append("angle_placeholder")
+    if any(token in value for token in ("待填写", "请在此处填写", "示例如下")):
+        reasons.append("fill_prompt")
+    return reasons
+
+
+def remaining_template_cues(
+    path: Path,
+    limit: int = 50,
+    ignored_texts: set[str] | None = None,
+) -> list[dict[str, Any]]:
+    cues = []
+    seen = set()
+    ignored_texts = ignored_texts or set()
+    for node in inventory_docx(path).get("nodes", []):
+        text = node.get("text", "")
+        if text in ignored_texts:
+            continue
+        reasons = template_cue_reasons(text)
+        unsupported = node.get("unsupported") or []
+        key = (text, tuple(reasons), tuple(unsupported))
+        if not reasons or key in seen:
+            continue
+        seen.add(key)
+        cues.append(
+            {
+                "node_id": node.get("node_id"),
+                "text": text[:200],
+                "reasons": reasons,
+                "manual_only": bool(unsupported),
+                "unsupported": unsupported,
+            }
+        )
+        if len(cues) >= limit:
+            break
+    return cues
 
 
 def zip_entry_hashes(path: Path) -> dict[str, str]:
@@ -735,6 +897,7 @@ def resolve_content_items(
         value = item.get("content")
         if not isinstance(value, str) or not value.strip():
             raise V2Error(f"{field_id}: content must be a non-empty string")
+        validate_content_quality(field_id, item, value)
         resolved.append({"field": field, "node": node, "content": value})
     return resolved
 
@@ -766,21 +929,38 @@ def apply_v2(
                 raw = source.read(info.filename)
                 if info.filename in part_changes:
                     root = etree.fromstring(raw)
-                    for change in part_changes[info.filename]:
+                    resolved_targets = []
+                    for index, change in enumerate(part_changes[info.filename]):
                         matches = root.xpath(change["node"]["path"], namespaces=NS)
                         if len(matches) != 1:
                             raise V2Error(
                                 f"{change['field']['id']}: structural path resolved to {len(matches)} nodes"
                             )
-                        paragraph = matches[0]
+                        resolved_targets.append((index, change, matches[0]))
+                    # Insertions run first so a title replacement and body insertion may safely
+                    # share one anchor.  All XPath lookups are completed before any mutation, so
+                    # inserting an earlier paragraph cannot shift later structural paths.
+                    ordered_targets = sorted(
+                        resolved_targets,
+                        key=lambda item: (0 if item[1]["field"]["operation"] == "insert_after" else 1, item[0]),
+                    )
+                    insertion_tails: dict[int, etree._Element] = {}
+                    for _, change, paragraph in ordered_targets:
                         operation = change["field"]["operation"]
                         content_lines = [line for line in change["content"].splitlines() if line.strip()] or [change["content"]]
                         if operation == "insert_after":
-                            current = paragraph
+                            current = insertion_tails.get(id(paragraph), paragraph)
+                            style_reference = insert_style_reference(paragraph)
                             for line in content_lines:
-                                new_paragraph = paragraph_with_text(paragraph, line)
+                                new_paragraph = paragraph_with_text(
+                                    style_reference,
+                                    line,
+                                    strip_numbering=True,
+                                    normalize_color=True,
+                                )
                                 current.addnext(new_paragraph)
                                 current = new_paragraph
+                            insertion_tails[id(paragraph)] = current
                         elif operation == "replace_placeholder":
                             anchor = change["field"]["locator"].get("text") or ""
                             if not anchor or not replace_placeholder(paragraph, anchor, change["content"]):
@@ -788,7 +968,7 @@ def apply_v2(
                         elif operation == "fill_cell":
                             if change["node"]["container"] != "table_cell":
                                 raise V2Error(f"{change['field']['id']}: fill_cell target is outside a table")
-                            replacement = paragraph_with_text(paragraph, change["content"])
+                            replacement = paragraph_with_text(paragraph, change["content"], normalize_color=True)
                             paragraph.getparent().replace(paragraph, replacement)
                         else:
                             raise V2Error(f"Unsupported operation: {operation}")
@@ -822,6 +1002,16 @@ def apply_v2(
     finally:
         if temporary.exists():
             temporary.unlink()
+    generated_lines = {
+        line.strip()
+        for item in resolved
+        for line in item["content"].splitlines()
+        if line.strip()
+    }
+    unresolved_cues = remaining_template_cues(output, ignored_texts=generated_lines)
+    review_checklist = ["写入位置", "表格边框与合并单元格", "分页与行距", "图片和公式位置"]
+    if unresolved_cues:
+        review_checklist.append("剩余 XXX、尖括号占位符、目录字段和模板填写提示")
     return {
         "ok": True,
         "version": PROFILE_VERSION,
@@ -832,8 +1022,9 @@ def apply_v2(
         "changed_parts": sorted(part_changes),
         "untouched_part_count": len(before_entries) - len(part_changes),
         "audit": audit,
+        "remaining_template_cues": unresolved_cues,
         "wps_review_required": True,
-        "wps_review_checklist": ["写入位置", "表格边框与合并单元格", "分页与行距", "图片和公式位置"],
+        "wps_review_checklist": review_checklist,
     }
 
 

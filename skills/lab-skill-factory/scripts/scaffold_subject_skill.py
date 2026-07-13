@@ -428,7 +428,7 @@ def build_quality_profile(slug: str, scope_level: str) -> dict:
                 "name": "写作画像与表达质量",
                 "target": "按课程画像和本次调整生成自然、具体、符合粒度的文字",
                 "evidence": ["writing-profile.json", "style-card.json", "variation_seed"],
-                "gate": "warn",
+                "gate": "block",
             },
             {
                 "id": "differentiation",
@@ -467,7 +467,7 @@ def build_quality_profile(slug: str, scope_level: str) -> dict:
         "quality_gates": [
             {"id": "source_coverage", "check": "每项硬要求有来源和状态", "action": "block"},
             {"id": "missing_evidence", "check": "真实数据、截图、源码缺失时有占位和待办", "action": "block"},
-            {"id": "style_application", "check": "写作画像、风格卡和 variation_seed 已应用", "action": "warn"},
+            {"id": "style_application", "check": "写作画像、风格卡、variation_seed 和已确认字数粒度已应用", "action": "block"},
             {"id": "anti_copy", "check": "参考样本仅用于风格，未复制正文或独特表达", "action": "block"},
             {"id": "user_checkpoint", "check": "需求、草稿、终稿和 Skill 更新均有用户确认入口", "action": "ask_user"},
             {"id": "format_safety", "check": "模板配置、写入审计和非目标部件保全通过", "action": "block"},
@@ -820,7 +820,7 @@ description: |
 5. 创建 v2 会话，生成并确认 `requirements-summary.json`；记录每项规则的来源。首次课程配置的关键确认尽量不超过 5 轮，后续同模板实验尽量不超过 2 轮。
 6. 如果用户没有提出写作偏好，直接采用已确认的课程画像和默认参数，不为了形式再增加一轮提问。
 7. 生成 OOXML inventory；首次确认节点并编译 `template-profile.json`，后续复用并处理 confirm/blocked 候选。
-8. 读取课程 `writing-profile.json` 和可选 `style-card.json`，沿用会话 `variation_seed` 生成 `content-package.json`；事实、格式和真实证据不得被风格变化覆盖。
+8. 读取课程 `writing-profile.json` 和可选 `style-card.json`，沿用会话 `variation_seed` 生成 `content-package.json`；正文和小结字段必须把已确认的字数范围写入每个 item 的 `quality`，由引擎在写入前强制校验；标题、编号等短字段可不设字数门禁。事实、格式和真实证据不得被风格变化覆盖。
 9. 状态到达 `content_ready` 后调用 v2 安全写入工具生成草稿，并生成质量自检摘要。
 10. 输出草稿后，让用户在 WPS 检查位置、表格、分页和图片，并记录 `review_id` 与反馈；用户可以直接指出段落要更详细、简短或换角度。
 11. 用户指出问题时回到内容阶段；用户批准后才能 Finalize。缺失截图、数据或源码时暂停，不编造。

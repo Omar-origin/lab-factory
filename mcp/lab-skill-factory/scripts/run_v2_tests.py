@@ -13,6 +13,9 @@ import zipfile
 from pathlib import Path
 
 from docx import Document
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+from docx.shared import Pt, RGBColor
 
 
 SCRIPT_ROOT = Path(__file__).resolve().parents[1]
@@ -45,12 +48,43 @@ def make_template(path: Path) -> None:
     document.save(path)
 
 
+def make_formatting_template(path: Path) -> None:
+    document = Document()
+    prompt = document.add_paragraph()
+    prompt_run = prompt.add_run("<正文待填>")
+    prompt_run.font.name = "宋体"
+    prompt_run.font.size = Pt(12)
+    prompt_run.font.color.rgb = RGBColor(255, 0, 0)
+
+    heading = document.add_paragraph()
+    heading_run = heading.add_run("实验小结")
+    heading_run.bold = True
+    heading_run.font.size = Pt(15)
+    num_pr = OxmlElement("w:numPr")
+    ilvl = OxmlElement("w:ilvl")
+    ilvl.set(qn("w:val"), "0")
+    num_id = OxmlElement("w:numId")
+    num_id.set(qn("w:val"), "3")
+    num_pr.append(ilvl)
+    num_pr.append(num_id)
+    heading._p.get_or_add_pPr().insert(0, num_pr)
+
+    body = document.add_paragraph()
+    body_run = body.add_run("")
+    body_run.font.name = "宋体"
+    body_run.font.size = Pt(12)
+    body_run.font.color.rgb = RGBColor(0, 0, 0)
+    document.add_paragraph("2.2.2 XXX功能")
+    document.add_paragraph("3.3 XXX待完善")
+    document.save(path)
+
+
 def xml_entry_hashes(path: Path) -> dict[str, str]:
     with zipfile.ZipFile(path) as archive:
         return {name: ENGINE.sha256(archive.read(name)) for name in archive.namelist()}
 
 
-def add_alternate_text_box(path: Path) -> None:
+def add_alternate_text_box(path: Path, text_value: str = "兼容文本框") -> None:
     with zipfile.ZipFile(path) as archive:
         entries = {name: archive.read(name) for name in archive.namelist()}
     root = ENGINE.etree.fromstring(entries["word/document.xml"])
@@ -64,7 +98,7 @@ def add_alternate_text_box(path: Path) -> None:
         paragraph = ENGINE.etree.SubElement(text_box, f"{ENGINE.W}p")
         run = ENGINE.etree.SubElement(paragraph, f"{ENGINE.W}r")
         text = ENGINE.etree.SubElement(run, f"{ENGINE.W}t")
-        text.text = "兼容文本框"
+        text.text = text_value
     section_properties = body.find(f"{ENGINE.W}sectPr")
     if section_properties is None:
         body.append(alternate)
@@ -108,6 +142,18 @@ def run() -> dict:
         results.append({
             "name": "alternate-content-deduplicated",
             "ok": len(alternate_nodes) == 1 and alternate_nodes[0]["unsupported"] == ["text_box"],
+        })
+        alternate_cue_template = root / "alternate-cue-template.docx"
+        make_template(alternate_cue_template)
+        add_alternate_text_box(alternate_cue_template, "兼容 XXX 文本框")
+        alternate_cues = ENGINE.remaining_template_cues(alternate_cue_template)
+        results.append({
+            "name": "unsupported-template-cue-manual-only",
+            "ok": any(
+                cue["manual_only"] and "text_box" in cue["unsupported"]
+                for cue in alternate_cues
+                if "XXX" in cue["text"]
+            ),
         })
 
         profile = ENGINE.create_template_profile(
@@ -168,6 +214,86 @@ def run() -> dict:
         results.append({"name": "source-unchanged", "ok": ENGINE.file_sha256(template) == source_hash})
         results.append({"name": "package-preservation", "ok": untouched and apply_result["changed_parts"] == ["word/document.xml"]})
         results.append({"name": "table-writeback", "ok": "程序运行成功" in output_text and "表格内安全写入" in output_text})
+
+        formatting_template = root / "formatting-template.docx"
+        formatting_output = root / "formatting-output.docx"
+        make_formatting_template(formatting_template)
+        formatting_inventory = ENGINE.inventory_docx(formatting_template)
+        prompt_node = next(node for node in formatting_inventory["nodes"] if node["text"] == "<正文待填>")
+        heading_node = next(node for node in formatting_inventory["nodes"] if node["text"] == "实验小结")
+        later_node = next(node for node in formatting_inventory["nodes"] if node["text"] == "2.2.2 XXX功能")
+        formatting_profile = ENGINE.create_template_profile(
+            formatting_inventory,
+            [
+                {"id": "body", "node_id": prompt_node["node_id"], "operation": "replace_placeholder"},
+                {"id": "reflection_title", "node_id": heading_node["node_id"], "operation": "replace_placeholder"},
+                {"id": "reflection", "node_id": heading_node["node_id"], "operation": "insert_after"},
+                {"id": "later_title", "node_id": later_node["node_id"], "operation": "replace_placeholder"},
+            ],
+            "格式回归",
+        )
+        formatting_content = {
+            "version": "2.0",
+            "items": [
+                {"field_id": "body", "content": "已替换正文"},
+                {"field_id": "reflection_title", "content": "实验小结（已修正）"},
+                {"field_id": "reflection", "content": "第一条正文\n第二条正文"},
+                {"field_id": "later_title", "content": "2.2.2 借阅功能"},
+            ],
+        }
+        formatting_result = ENGINE.apply_v2(
+            formatting_profile, formatting_template, formatting_content, formatting_output
+        )
+        with zipfile.ZipFile(formatting_output) as archive:
+            formatting_root = ENGINE.etree.fromstring(archive.read("word/document.xml"))
+        body_run = formatting_root.xpath('.//w:r[w:t="已替换正文"]', namespaces=ENGINE.NS)[0]
+        body_color = ENGINE.child_value(body_run, "./w:rPr/w:color")
+        inserted_paragraph = formatting_root.xpath(
+            './/w:p[.//w:t="第一条正文"]', namespaces=ENGINE.NS
+        )[0]
+        inserted_size = ENGINE.child_value(inserted_paragraph, ".//w:rPr/w:sz")
+        results.append({"name": "placeholder-color-normalized", "ok": body_color == "000000"})
+        results.append({
+            "name": "insert-after-uses-body-style",
+            "ok": not ENGINE.active_numbering(inserted_paragraph) and inserted_size == "24",
+        })
+        results.append({
+            "name": "remaining-template-cues-audited",
+            "ok": any(
+                "xxx_placeholder" in cue["reasons"]
+                for cue in formatting_result["remaining_template_cues"]
+            ),
+        })
+        formatting_text = "\n".join(
+            node["text"] for node in ENGINE.inventory_docx(formatting_output)["nodes"]
+        )
+        results.append({
+            "name": "mutation-targets-pre-resolved",
+            "ok": "实验小结（已修正）" in formatting_text and "2.2.2 借阅功能" in formatting_text,
+        })
+        quality_blocked = False
+        try:
+            ENGINE.apply_v2(
+                formatting_profile,
+                formatting_template,
+                {
+                    "version": "2.0",
+                    "items": [
+                        {
+                            "field_id": "body",
+                            "content": "太短",
+                            "quality": {"unit": "whole", "min_chars": 20, "max_chars": 40},
+                        },
+                        {"field_id": "reflection_title", "content": "实验小结（已修正）"},
+                        {"field_id": "reflection", "content": "内容完整"},
+                        {"field_id": "later_title", "content": "2.2.2 借阅功能"},
+                    ],
+                },
+                root / "quality-should-not-write.docx",
+            )
+        except ENGINE.V2Error as exc:
+            quality_blocked = "expected 20-40" in str(exc)
+        results.append({"name": "content-quality-gate", "ok": quality_blocked})
 
         session_workspace = root / "session"
         session = ENGINE.create_session(session_workspace, "软件工程")

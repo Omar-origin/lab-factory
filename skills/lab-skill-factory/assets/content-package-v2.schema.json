@@ -16,7 +16,17 @@
           "field_id": {"type": "string"},
           "content": {"type": "string", "minLength": 1},
           "selected_node_id": {"type": "string"},
-          "evidence_source": {"type": "string"}
+          "evidence_source": {"type": "string"},
+          "quality": {
+            "type": "object",
+            "required": ["unit", "min_chars", "max_chars"],
+            "properties": {
+              "unit": {"enum": ["whole", "per_paragraph"]},
+              "min_chars": {"type": "integer", "minimum": 1},
+              "max_chars": {"type": "integer", "minimum": 1}
+            },
+            "additionalProperties": false
+          }
         },
         "additionalProperties": false
       }
