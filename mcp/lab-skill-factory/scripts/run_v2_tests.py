@@ -49,6 +49,34 @@ def xml_entry_hashes(path: Path) -> dict[str, str]:
         return {name: ENGINE.sha256(archive.read(name)) for name in archive.namelist()}
 
 
+def add_alternate_text_box(path: Path) -> None:
+    with zipfile.ZipFile(path) as archive:
+        entries = {name: archive.read(name) for name in archive.namelist()}
+    root = ENGINE.etree.fromstring(entries["word/document.xml"])
+    body = root.find(f".//{ENGINE.W}body")
+    alternate = ENGINE.etree.Element(f"{{{ENGINE.NS['mc']}}}AlternateContent")
+    choice = ENGINE.etree.SubElement(alternate, f"{{{ENGINE.NS['mc']}}}Choice")
+    choice.set("Requires", "wps")
+    fallback = ENGINE.etree.SubElement(alternate, f"{{{ENGINE.NS['mc']}}}Fallback")
+    for branch in (choice, fallback):
+        text_box = ENGINE.etree.SubElement(branch, f"{ENGINE.W}txbxContent")
+        paragraph = ENGINE.etree.SubElement(text_box, f"{ENGINE.W}p")
+        run = ENGINE.etree.SubElement(paragraph, f"{ENGINE.W}r")
+        text = ENGINE.etree.SubElement(run, f"{ENGINE.W}t")
+        text.text = "兼容文本框"
+    section_properties = body.find(f"{ENGINE.W}sectPr")
+    if section_properties is None:
+        body.append(alternate)
+    else:
+        body.insert(body.index(section_properties), alternate)
+    entries["word/document.xml"] = ENGINE.etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone="yes")
+    rewritten = path.with_suffix(".rewritten.docx")
+    with zipfile.ZipFile(rewritten, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name, value in entries.items():
+            archive.writestr(name, value)
+    os.replace(rewritten, path)
+
+
 def run() -> dict:
     results = []
     with tempfile.TemporaryDirectory(prefix="lab-factory-v2-tests-") as temporary_dir:
@@ -71,6 +99,16 @@ def run() -> dict:
         )
         results.append({"name": "inventory-table-coordinate", "ok": result_node["coordinates"] == {"table": 0, "row": 1, "cell": 1, "paragraph": 0}})
 
+        alternate_template = root / "alternate-template.docx"
+        make_template(alternate_template)
+        add_alternate_text_box(alternate_template)
+        alternate_inventory = ENGINE.inventory_docx(alternate_template)
+        alternate_nodes = [node for node in alternate_inventory["nodes"] if node["text"] == "兼容文本框"]
+        results.append({
+            "name": "alternate-content-deduplicated",
+            "ok": len(alternate_nodes) == 1 and alternate_nodes[0]["unsupported"] == ["text_box"],
+        })
+
         profile = ENGINE.create_template_profile(
             inventory,
             [
@@ -81,6 +119,22 @@ def run() -> dict:
         )
         proposals = ENGINE.propose_placements(profile, inventory)
         results.append({"name": "placements-auto", "ok": proposals["summary"] == {"auto": 2, "confirm": 0, "blocked": 0}})
+        related = root / "related.docx"
+        related_document = Document(template)
+        related_document.add_paragraph("本次实验新增的长段落内容不会改变模板家族判断。")
+        related_document.add_paragraph("另一段填写后的实验说明。")
+        related_document.save(related)
+        related_inventory = ENGINE.inventory_docx(related)
+        related_plan = ENGINE.propose_placements(profile, related_inventory)
+        results.append({
+            "name": "family-compatible-after-content-growth",
+            "ok": (
+                not related_plan["family_fingerprint_match"]
+                and related_plan["family_compatible"]
+                and related_plan["family_compatibility"]["score"] >= ENGINE.FAMILY_COMPATIBILITY_THRESHOLD
+                and related_plan["summary"]["auto"] == 2
+            ),
+        })
         confirmed = ENGINE.confirmed_profile(profile, inventory, proposals, [], "用户确认当前模板位置")
         results.append({"name": "profile-drift-history", "ok": len(confirmed["drift_history"]) == 1})
 
@@ -91,6 +145,7 @@ def run() -> dict:
         incompatible_document.save(incompatible)
         incompatible_plan = ENGINE.propose_placements(profile, ENGINE.inventory_docx(incompatible))
         results.append({"name": "container-conflict-blocked", "ok": incompatible_plan["summary"]["blocked"] == 2})
+        results.append({"name": "unrelated-family-rejected", "ok": incompatible_plan["family_compatible"] is False})
 
         content = {
             "version": "2.0",

@@ -33,6 +33,7 @@ NS = {
     "m": "http://schemas.openxmlformats.org/officeDocument/2006/math",
     "v": "urn:schemas-microsoft-com:vml",
     "wps": "http://schemas.microsoft.com/office/word/2010/wordprocessingShape",
+    "mc": "http://schemas.openxmlformats.org/markup-compatibility/2006",
 }
 W = f"{{{NS['w']}}}"
 XML_SPACE = "{http://www.w3.org/XML/1998/namespace}space"
@@ -40,6 +41,7 @@ PROFILE_VERSION = "2.0"
 AUTO_THRESHOLD = 0.90
 CONFIRM_THRESHOLD = 0.65
 AUTO_MARGIN = 0.15
+FAMILY_COMPATIBILITY_THRESHOLD = 0.72
 STATES = [
     "materials_scanned",
     "requirements_confirmed",
@@ -117,6 +119,17 @@ def has_ancestor(element: etree._Element, local_name: str) -> bool:
     return ancestor(element, local_name) is not None
 
 
+def is_alternate_content_fallback(element: etree._Element) -> bool:
+    """Ignore duplicate fallback markup when a modern Choice is present."""
+    fallback = ancestor(element, "Fallback")
+    if fallback is None:
+        return False
+    alternate = fallback.getparent()
+    if alternate is None or etree.QName(alternate).localname != "AlternateContent":
+        return False
+    return any(etree.QName(child).localname == "Choice" for child in alternate)
+
+
 def direct_index(element: etree._Element, local_name: str) -> int:
     parent = element.getparent()
     if parent is None:
@@ -155,6 +168,112 @@ def unsupported_reasons(paragraph: etree._Element) -> list[str]:
     return reasons
 
 
+FAMILY_LABEL_KEYWORDS = (
+    "实验", "报告", "课程", "目的", "原理", "内容", "步骤", "结果", "分析", "小结", "总结",
+    "要求", "环境", "工具", "任务", "项目", "题目", "代码", "截图", "附录", "学号", "姓名",
+    "班级", "专业", "日期", "时间", "成绩", "等级", "教师", "指导",
+)
+
+
+def stable_family_label(value: str) -> str | None:
+    value = normalize_text(value)
+    if not value or len(value) > 80 or not any(keyword in value for keyword in FAMILY_LABEL_KEYWORDS):
+        return None
+    value = re.sub(r"\d{3,}", "#", value)
+    value = re.sub(r"(姓名|学号|班级|专业)[：:].*$", r"\1", value)
+    return value[:80]
+
+
+def build_family_signature(nodes: list[dict[str, Any]]) -> dict[str, Any]:
+    labels = sorted({label for node in nodes if (label := stable_family_label(node.get("normalized_text", "")))})
+    header_footer_labels = sorted({
+        re.sub(r"\d{3,}", "#", node.get("normalized_text", ""))[:120]
+        for node in nodes
+        if node.get("story") != "document" and node.get("normalized_text")
+    })
+    table_cells: dict[int, set[tuple[int, int]]] = {}
+    for node in nodes:
+        coordinates = node.get("coordinates")
+        if not coordinates:
+            continue
+        table_cells.setdefault(coordinates["table"], set()).add((coordinates["row"], coordinates["cell"]))
+    table_shapes = []
+    for table_index in sorted(table_cells):
+        cells = table_cells[table_index]
+        row_count = max(row for row, _ in cells) + 1
+        max_cell_count = max(sum(1 for item_row, _ in cells if item_row == row) for row in range(row_count))
+        table_shapes.append(f"{row_count}x{max_cell_count}")
+    container_counts = {
+        container: sum(1 for node in nodes if node.get("container") == container)
+        for container in ("paragraph", "table_cell")
+    }
+    return {
+        "version": 1,
+        "stories": sorted({node.get("story", "") for node in nodes}),
+        "labels": labels,
+        "header_footer_labels": header_footer_labels,
+        "table_shapes": table_shapes,
+        "container_counts": container_counts,
+        "unsupported_types": sorted({reason for node in nodes for reason in node.get("unsupported", [])}),
+    }
+
+
+def overlap_coefficient(left: Iterable[str], right: Iterable[str]) -> tuple[float, int]:
+    left_set, right_set = set(left), set(right)
+    if not left_set and not right_set:
+        return 1.0, 0
+    if not left_set or not right_set:
+        return 0.0, 0
+    intersection = len(left_set & right_set)
+    return intersection / min(len(left_set), len(right_set)), intersection
+
+
+def family_signature_similarity(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
+    story_score, story_matches = overlap_coefficient(left.get("stories", []), right.get("stories", []))
+    label_score, label_matches = overlap_coefficient(left.get("labels", []), right.get("labels", []))
+    header_score, header_matches = overlap_coefficient(
+        left.get("header_footer_labels", []), right.get("header_footer_labels", [])
+    )
+    table_score, table_matches = overlap_coefficient(left.get("table_shapes", []), right.get("table_shapes", []))
+    left_counts = left.get("container_counts") or {}
+    right_counts = right.get("container_counts") or {}
+    left_total = max(1, sum(int(value) for value in left_counts.values()))
+    right_total = max(1, sum(int(value) for value in right_counts.values()))
+    proportions = []
+    for key in ("paragraph", "table_cell"):
+        proportions.append(1.0 - abs(int(left_counts.get(key, 0)) / left_total - int(right_counts.get(key, 0)) / right_total))
+    container_score = sum(proportions) / len(proportions)
+    score = round(
+        0.10 * story_score
+        + 0.35 * label_score
+        + 0.25 * header_score
+        + 0.15 * table_score
+        + 0.15 * container_score,
+        4,
+    )
+    evidence = int(label_matches >= 3) + int(header_matches >= 1) + int(table_matches >= 1)
+    compatible = score >= FAMILY_COMPATIBILITY_THRESHOLD and evidence >= 2
+    return {
+        "score": score,
+        "compatible": compatible,
+        "threshold": FAMILY_COMPATIBILITY_THRESHOLD,
+        "evidence": evidence,
+        "matches": {
+            "stories": story_matches,
+            "labels": label_matches,
+            "header_footer_labels": header_matches,
+            "table_shapes": table_matches,
+        },
+        "features": {
+            "stories": round(story_score, 4),
+            "labels": round(label_score, 4),
+            "header_footer_labels": round(header_score, 4),
+            "table_shapes": round(table_score, 4),
+            "container_distribution": round(container_score, 4),
+        },
+    }
+
+
 def inventory_docx(path: Path) -> dict[str, Any]:
     if not path.exists() or path.suffix.lower() != ".docx":
         raise V2Error(f"DOCX does not exist or has wrong extension: {path}")
@@ -169,7 +288,10 @@ def inventory_docx(path: Path) -> dict[str, Any]:
             parts[part_name] = sha256(raw)
             root = etree.fromstring(raw)
             tree = root.getroottree()
-            paragraphs = root.xpath(".//w:p", namespaces=NS)
+            paragraphs = [
+                paragraph for paragraph in root.xpath(".//w:p", namespaces=NS)
+                if not is_alternate_content_fallback(paragraph)
+            ]
             story_counts[story] = len(paragraphs)
             provisional: list[dict[str, Any]] = []
             for order, paragraph in enumerate(paragraphs):
@@ -232,12 +354,14 @@ def inventory_docx(path: Path) -> dict[str, Any]:
     ]
     label_tokens = [node["normalized_text"][:80] for node in nodes if 0 < len(node["normalized_text"]) <= 80]
     family_fingerprint = sha256("\n".join(structure_tokens).encode("utf-8"))
+    family_signature = build_family_signature(nodes)
     return {
         "ok": True,
         "version": PROFILE_VERSION,
         "document": str(path.resolve()),
         "document_sha256": file_sha256(path),
         "family_fingerprint": family_fingerprint,
+        "family_signature": family_signature,
         "content_fingerprint": sha256("\n".join(label_tokens).encode("utf-8")),
         "node_count": len(nodes),
         "story_counts": story_counts,
@@ -314,6 +438,7 @@ def create_template_profile(inventory: dict[str, Any], fields: list[dict[str, An
         "created_at": now_iso(),
         "source_document_sha256": inventory.get("document_sha256"),
         "family_fingerprint": inventory.get("family_fingerprint"),
+        "family_signature": copy.deepcopy(inventory.get("family_signature")),
         "thresholds": {
             "auto": AUTO_THRESHOLD,
             "confirm": CONFIRM_THRESHOLD,
@@ -399,13 +524,34 @@ def propose_placements(profile: dict[str, Any], inventory: dict[str, Any]) -> di
     auto = float(thresholds.get("auto", AUTO_THRESHOLD))
     confirm = float(thresholds.get("confirm", CONFIRM_THRESHOLD))
     required_margin = float(thresholds.get("margin", AUTO_MARGIN))
-    family_match = profile.get("family_fingerprint") == inventory.get("family_fingerprint")
+    family_exact_match = profile.get("family_fingerprint") == inventory.get("family_fingerprint")
+    if family_exact_match:
+        family_compatibility = {
+            "score": 1.0,
+            "compatible": True,
+            "threshold": FAMILY_COMPATIBILITY_THRESHOLD,
+            "evidence": 3,
+            "matches": {},
+            "features": {"exact_fingerprint": 1.0},
+        }
+    elif isinstance(profile.get("family_signature"), dict) and isinstance(inventory.get("family_signature"), dict):
+        family_compatibility = family_signature_similarity(profile["family_signature"], inventory["family_signature"])
+    else:
+        family_compatibility = {
+            "score": 0.0,
+            "compatible": False,
+            "threshold": FAMILY_COMPATIBILITY_THRESHOLD,
+            "evidence": 0,
+            "matches": {},
+            "features": {"legacy_profile_without_signature": 1.0},
+        }
+    family_compatible = bool(family_compatibility["compatible"])
     proposals = []
     for field in profile["fields"]:
         scored = []
         for node in inventory.get("nodes", []):
             score, features = score_candidate(field["locator"], node)
-            if not family_match:
+            if not family_compatible:
                 score = min(score, 0.89)
             if score > 0:
                 scored.append(
@@ -446,7 +592,9 @@ def propose_placements(profile: dict[str, Any], inventory: dict[str, Any]) -> di
         "version": PROFILE_VERSION,
         "profile_id": profile.get("profile_id"),
         "document_sha256": inventory.get("document_sha256"),
-        "family_fingerprint_match": family_match,
+        "family_fingerprint_match": family_exact_match,
+        "family_compatible": family_compatible,
+        "family_compatibility": family_compatibility,
         "proposals": proposals,
         "summary": {
             key: sum(1 for item in proposals if item["decision"] == key)
@@ -493,12 +641,14 @@ def confirmed_profile(
             )
         }
     updated["family_fingerprint"] = inventory.get("family_fingerprint")
+    updated["family_signature"] = copy.deepcopy(inventory.get("family_signature"))
     updated["source_document_sha256"] = inventory.get("document_sha256")
     updated.setdefault("drift_history", []).append(
         {
             "at": now_iso(),
             "document_sha256": inventory.get("document_sha256"),
             "family_fingerprint": inventory.get("family_fingerprint"),
+            "family_compatibility": copy.deepcopy(plan.get("family_compatibility")),
             "changed_fields": changed_fields,
             "user_confirmation_summary": summary,
         }

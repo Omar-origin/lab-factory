@@ -12,6 +12,8 @@
 1. 调用 `lab_factory_v2_inventory_docx`，检查 paragraph、table cell、header/footer 和 unsupported 节点。
 2. 首次模板让用户确认正确节点，再调用 `lab_factory_v2_create_template_profile`。
 3. 后续同系列模板调用 `lab_factory_v2_propose_placements`：
+   - 先检查 `family_signature` 的标签、页眉页脚、表格形状和容器分布兼容分数；局部内容增长不要求完整结构哈希一致。
+   - `AlternateContent` 同时包含 Choice/Fallback 时只采用 Choice，避免把同一个文本框重复列为两个候选。
    - `auto`：可采用。
    - `confirm`：展示最多五个候选的文本、上下文和表格坐标，让用户选择。
    - `blocked`：停止，不得用字符串首个命中回退。

@@ -8,6 +8,27 @@
     "profile_id": {"type": "string", "pattern": "^tp_[a-f0-9]{16}$"},
     "subject": {"type": "string", "minLength": 1},
     "family_fingerprint": {"type": "string", "minLength": 64, "maxLength": 64},
+    "family_signature": {
+      "type": "object",
+      "required": ["version", "stories", "labels", "header_footer_labels", "table_shapes", "container_counts"],
+      "properties": {
+        "version": {"const": 1},
+        "stories": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "labels": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "header_footer_labels": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "table_shapes": {"type": "array", "items": {"type": "string"}},
+        "container_counts": {
+          "type": "object",
+          "required": ["paragraph", "table_cell"],
+          "properties": {
+            "paragraph": {"type": "integer", "minimum": 0},
+            "table_cell": {"type": "integer", "minimum": 0}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": true
+    },
     "thresholds": {
       "type": "object",
       "required": ["auto", "confirm", "margin"],
