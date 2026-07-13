@@ -19,6 +19,7 @@ pyinstaller \
   --specpath "$MCP_DIR/build" \
   --hidden-import docx \
   --hidden-import lxml \
+  --collect-data docx \
   --add-data "$ROOT_DIR/skills/lab-skill-factory:skills/lab-skill-factory" \
   --add-data "$MCP_DIR/scripts:scripts" \
   --add-data "$MCP_DIR/evals:evals" \

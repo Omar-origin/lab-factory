@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Lab Factory v2 Template Profile",
+  "type": "object",
+  "required": ["version", "profile_id", "subject", "family_fingerprint", "thresholds", "fields"],
+  "properties": {
+    "version": {"const": "2.0"},
+    "profile_id": {"type": "string", "pattern": "^tp_[a-f0-9]{16}$"},
+    "subject": {"type": "string", "minLength": 1},
+    "family_fingerprint": {"type": "string", "minLength": 64, "maxLength": 64},
+    "thresholds": {
+      "type": "object",
+      "required": ["auto", "confirm", "margin"],
+      "properties": {
+        "auto": {"type": "number", "minimum": 0.9, "maximum": 1},
+        "confirm": {"type": "number", "minimum": 0, "maximum": 0.9},
+        "margin": {"type": "number", "minimum": 0.15, "maximum": 1}
+      },
+      "additionalProperties": false
+    },
+    "fields": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "semantic_role", "required", "content_type", "operation", "locator"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{1,63}$"},
+          "semantic_role": {"type": "string"},
+          "required": {"type": "boolean"},
+          "content_type": {"type": "string"},
+          "requires_real_evidence": {"type": "boolean"},
+          "operation": {"enum": ["insert_after", "replace_placeholder", "fill_cell"]},
+          "locator": {
+            "type": "object",
+            "required": ["node_id", "story", "part_name", "path", "container"],
+            "properties": {
+              "node_id": {"type": "string"},
+              "story": {"type": "string"},
+              "part_name": {"type": "string"},
+              "path": {"type": "string"},
+              "container": {"enum": ["paragraph", "table_cell"]},
+              "coordinates": {"type": ["object", "null"]},
+              "text": {"type": "string"},
+              "normalized_text": {"type": "string"},
+              "style_id": {"type": ["string", "null"]},
+              "context": {"type": "object"}
+            },
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

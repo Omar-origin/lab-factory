@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Lab Factory v2 Requirements Summary",
+  "type": "object",
+  "required": ["version", "experiment", "tools", "formatting", "evidence", "submission", "writable_regions", "protected_regions", "missing", "conflicts"],
+  "properties": {
+    "version": {"const": "2.0"},
+    "experiment": {"type": "object"},
+    "tools": {"type": ["object", "array"]},
+    "formatting": {"type": "object"},
+    "evidence": {"type": ["object", "array"]},
+    "submission": {"type": "object"},
+    "writable_regions": {"type": "array"},
+    "protected_regions": {"type": "array"},
+    "missing": {"type": "array"},
+    "conflicts": {"type": "array", "maxItems": 0}
+  },
+  "additionalProperties": true
+}

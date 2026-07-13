@@ -81,42 +81,43 @@ def run_install(args: argparse.Namespace) -> int:
 
 def run_beta_tests(_: argparse.Namespace) -> int:
     script_root = server.BUNDLE_ROOT if server.FROZEN else server.SERVER_DIR
-    script = script_root / "scripts" / "run_beta_smoke_tests.py"
-    if not script.exists():
+    scripts = [
+        script_root / "scripts" / "run_beta_smoke_tests.py",
+        script_root / "scripts" / "run_v2_tests.py",
+    ]
+    missing = [str(script) for script in scripts if not script.exists()]
+    if missing:
         print_json(
             {
                 "ok": False,
-                "error": "beta smoke test script is not available in this build",
-                "script": str(script),
+                "error": "beta smoke test scripts are not available in this build",
+                "missing": missing,
             }
         )
         return 1
     if server.FROZEN:
-        original_argv = sys.argv[:]
-        try:
-            sys.argv = [str(script)]
-            runpy.run_path(str(script), run_name="__main__")
-            return 0
-        except SystemExit as exc:
-            return int(exc.code or 0) if isinstance(exc.code, int) else 1
-        finally:
-            sys.argv = original_argv
-    proc = subprocess.run(
-        [sys.executable, str(script)],
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-    )
-    return proc.returncode
+        for script in scripts:
+            original_argv = sys.argv[:]
+            try:
+                sys.argv = [str(script)]
+                runpy.run_path(str(script), run_name="__main__")
+            except SystemExit as exc:
+                code = int(exc.code or 0) if isinstance(exc.code, int) else 1
+                if code:
+                    return code
+            finally:
+                sys.argv = original_argv
+        return 0
+    for script in scripts:
+        proc = subprocess.run(
+            [sys.executable, str(script)], text=True, encoding="utf-8", errors="replace", check=False,
+        )
+        if proc.returncode:
+            return proc.returncode
+    return 0
 
 
 def run_mcp_smoke(_: argparse.Namespace) -> int:
-    command = (
-        [sys.executable, "serve-mcp"]
-        if server.FROZEN
-        else [sys.executable, str(server.SERVER_DIR / "cli.py"), "serve-mcp"]
-    )
     request = {
         "jsonrpc": "2.0",
         "id": 1,
@@ -127,6 +128,13 @@ def run_mcp_smoke(_: argparse.Namespace) -> int:
             "clientInfo": {"name": "lab-factory-cli-smoke", "version": "0"},
         },
     }
+    if server.FROZEN:
+        response = server.handle_request(request)
+        server_info = ((response or {}).get("result") or {}).get("serverInfo") or {}
+        ok = bool(response) and response.get("id") == 1 and server_info.get("name") == "lab-factory-mcp"
+        print_json({"ok": ok, "mode": "in_process_frozen_handshake", "response": response})
+        return 0 if ok else 1
+    command = [sys.executable, str(server.SERVER_DIR / "cli.py"), "serve-mcp"]
     payload = (json.dumps(request, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
     env = os.environ.copy()
     env.setdefault("PYTHONIOENCODING", "utf-8")
@@ -254,6 +262,51 @@ def main() -> int:
     apply_fill.add_argument("--output")
     apply_fill.add_argument("--overwrite", action="store_true")
 
+    inventory_v2 = sub.add_parser("inventory-v2", help="Build a structural OOXML inventory for a DOCX template.")
+    inventory_v2.add_argument("docx_path")
+    inventory_v2.add_argument("--output")
+
+    profile_v2 = sub.add_parser("create-profile-v2", help="Compile confirmed inventory nodes into a v2 template profile.")
+    profile_v2.add_argument("inventory_path")
+    profile_v2.add_argument("output_path")
+    profile_v2.add_argument("--subject", required=True)
+    profile_v2.add_argument("--fields-json", required=True, help="JSON array of field definitions.")
+
+    propose_v2 = sub.add_parser("propose-v2", help="Score v2 placements for a DOCX.")
+    propose_v2.add_argument("profile_path")
+    propose_v2.add_argument("docx_path")
+    propose_v2.add_argument("--output")
+
+    apply_v2 = sub.add_parser("apply-v2", help="Apply a v2 content package with structural placement gates.")
+    apply_v2.add_argument("profile_path")
+    apply_v2.add_argument("docx_path")
+    apply_v2.add_argument("content_package_path")
+    apply_v2.add_argument("output_path")
+    apply_v2.add_argument("--overwrite", action="store_true")
+
+    create_session_v2 = sub.add_parser("create-session-v2", help="Create a persistent Lab Factory v2 workflow session.")
+    create_session_v2.add_argument("workspace")
+    create_session_v2.add_argument("--subject", required=True)
+    create_session_v2.add_argument("--report-id")
+
+    session_v2 = sub.add_parser("session-v2", help="Show a persistent Lab Factory v2 workflow session.")
+    session_v2.add_argument("workspace")
+
+    writing_v2 = sub.add_parser("writing-profile-v2", help="Create a course-scoped writing profile.")
+    writing_v2.add_argument("output_path")
+    writing_v2.add_argument("--subject", required=True)
+    writing_v2.add_argument("--preset", choices=["balanced", "concise", "technical", "personal"], default="balanced")
+    writing_v2.add_argument("--overrides-json", default="{}")
+
+    similarity_v2 = sub.add_parser("similarity-v2", help="Run the strict reference-sample similarity gate.")
+    similarity_v2.add_argument("generated_path")
+    similarity_v2.add_argument("reference_paths", nargs="+")
+    similarity_v2.add_argument("--whitelist-json", default="[]")
+
+    migrate_v2 = sub.add_parser("migrate-v1", help="Convert a v1 fill-map into a v2 relocation draft.")
+    migrate_v2.add_argument("fill_map_path")
+    migrate_v2.add_argument("output_path")
+
     validate_skill = sub.add_parser("validate-skill", help="Validate a generated user subject skill.")
     validate_skill.add_argument("skill_dir")
 
@@ -308,6 +361,66 @@ def main() -> int:
         if args.output:
             payload["output_path"] = args.output
         return call_tool(server.tool_apply_fill_map, payload)
+    if args.command == "inventory-v2":
+        payload = {"docx_path": args.docx_path}
+        if args.output:
+            payload["output_path"] = args.output
+        return call_tool(server.tool_v2_inventory, payload)
+    if args.command == "create-profile-v2":
+        try:
+            fields = json.loads(args.fields_json)
+        except json.JSONDecodeError as exc:
+            print_json({"ok": False, "error": f"Invalid --fields-json: {exc}"})
+            return 2
+        return call_tool(server.tool_v2_create_template_profile, {"inventory_path": args.inventory_path, "output_path": args.output_path, "subject": args.subject, "fields": fields})
+    if args.command == "propose-v2":
+        payload = {"profile_path": args.profile_path, "docx_path": args.docx_path}
+        if args.output:
+            payload["output_path"] = args.output
+        return call_tool(server.tool_v2_propose_placements, payload)
+    if args.command == "apply-v2":
+        # Direct CLI use is diagnostic and does not advance an MCP workflow session.
+        command = [
+            "apply", server.resolve_user_path(args.profile_path), server.resolve_user_path(args.docx_path),
+            server.resolve_user_path(args.content_package_path), "--output", server.resolve_user_path(args.output_path),
+        ]
+        if args.overwrite:
+            command.append("--overwrite")
+        try:
+            print_json(server.run_v2(command, timeout=180))
+            return 0
+        except server.ToolError as exc:
+            print_json({"ok": False, "error": str(exc)})
+            return 1
+    if args.command == "create-session-v2":
+        payload = {"workspace": args.workspace, "subject": args.subject}
+        if args.report_id:
+            payload["report_id"] = args.report_id
+        return call_tool(server.tool_v2_create_session, payload)
+    if args.command == "session-v2":
+        return call_tool(server.tool_v2_session_status, {"workspace": args.workspace})
+    if args.command == "writing-profile-v2":
+        try:
+            overrides = json.loads(args.overrides_json)
+        except json.JSONDecodeError as exc:
+            print_json({"ok": False, "error": f"Invalid --overrides-json: {exc}"})
+            return 2
+        return call_tool(server.tool_v2_create_writing_profile, {"output_path": args.output_path, "subject": args.subject, "preset": args.preset, "overrides": overrides})
+    if args.command == "similarity-v2":
+        try:
+            whitelist = json.loads(args.whitelist_json)
+            result = server.run_v2([
+                "similarity", server.resolve_user_path(args.generated_path),
+                *(server.resolve_user_path(path) for path in args.reference_paths),
+                "--whitelist-json", json.dumps(whitelist, ensure_ascii=False),
+            ], allow_validation_failure=True)
+            print_json(result)
+            return 0 if result.get("ok") else 1
+        except (server.ToolError, json.JSONDecodeError) as exc:
+            print_json({"ok": False, "error": str(exc)})
+            return 1
+    if args.command == "migrate-v1":
+        return call_tool(server.tool_v2_migrate_v1, {"fill_map_path": args.fill_map_path, "output_path": args.output_path})
     if args.command == "validate-skill":
         return call_tool(server.tool_validate_scaffolded_skill, {"skill_dir": args.skill_dir})
     if args.command == "test":

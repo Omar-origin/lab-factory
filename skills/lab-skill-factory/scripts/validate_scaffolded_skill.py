@@ -21,14 +21,19 @@ REQUIRED_FILES = [
     "references/default-writing-parameters.md",
     "references/compliance.md",
     "references/iteration-log.md",
+    "references/v2-workflow.md",
     "assets/fill-template.md",
     "assets/fill-map.schema.json",
+    "assets/requirements-summary-v2.schema.json",
+    "assets/template-profile-v2.schema.json",
+    "assets/content-package-v2.schema.json",
+    "assets/writing-profile-v2.schema.json",
+    "assets/style-card-v2.schema.json",
     "evals/evals.json",
 ]
 
 
 REQUIRED_SKILL_PHRASES = [
-    "fill.md + fill-map.json",
     "从头到尾完整阅读",
     "复述任务要求",
     "等待用户确认",
@@ -43,6 +48,13 @@ REQUIRED_SKILL_PHRASES = [
     "受控迭代",
     "不依赖 Codex-only 指令",
     "Claude Code",
+    "requirements-summary",
+    "OOXML inventory",
+    "template-profile.json",
+    "content-package.json",
+    "variation_seed",
+    "WPS",
+    "完成但不更新",
 ]
 
 
@@ -72,7 +84,17 @@ REQUIRED_REFERENCE_PHRASES = {
         "草稿输出后",
         "删除用户确认可删内容",
         "免责声明",
-        "更新迭代 skill",
+        "完成但不更新",
+    ],
+    "references/v2-workflow.md": [
+        "lab_factory_v2_create_session",
+        "lab_factory_v2_inventory_docx",
+        "auto",
+        "confirm",
+        "blocked",
+        "variation_seed",
+        "相似性门禁",
+        "完成且不更新",
     ],
 }
 

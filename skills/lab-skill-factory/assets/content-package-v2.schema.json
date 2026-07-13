@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Lab Factory v2 Content Package",
+  "type": "object",
+  "required": ["version", "items"],
+  "properties": {
+    "version": {"const": "2.0"},
+    "variation_seed": {"type": "string"},
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["field_id", "content"],
+        "properties": {
+          "field_id": {"type": "string"},
+          "content": {"type": "string", "minLength": 1},
+          "selected_node_id": {"type": "string"},
+          "evidence_source": {"type": "string"}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

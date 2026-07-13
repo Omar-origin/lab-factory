@@ -14,12 +14,17 @@
 <材料路径>
 ```
 
-## 关键产物
+## v2 关键产物
 
 - `skill-spec.md`：用户确认的专属 skill 规则。
 - 专属 `SKILL.md`：由 MCP 内置生成器生成；开发环境可用 `skill-creator` 做质量参考。
-- `fill.md`：后续报告填补内容预览。
-- `fill-map.json`：后续把 fill 内容填入模板的锚点映射。
+- `requirements-summary.json`：从材料抽取并经用户确认的要求、格式、工具、证据和提交规则。
+- `template-profile.json`：课程模板的 OOXML 结构定位、表格坐标、上下文和样式来源。
+- `content-package.json`：宿主模型生成的字段化内容和经用户确认的低置信度节点。
+- `writing-profile.json` / `style-card.json`：课程写作画像和不含样本正文的风格特征。
+- `session-state.json`：可以跨客户端重启恢复的强制工作流状态。
+
+v1 的 `fill.md + fill-map.json` 只用于读取和迁移；新任务不得继续创建字符串首命中式写入。
 
 ## 核心原则
 

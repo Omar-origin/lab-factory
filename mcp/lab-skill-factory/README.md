@@ -1,4 +1,4 @@
-# Lab Factory 免费测试版
+# Lab Factory v2 免费测试版
 
 这是 `skills/lab-skill-factory` 的产品包装层。当前定位不是黑盒代写实验报告，而是：
 
@@ -6,11 +6,25 @@
 - 一个标准 stdio MCP 接口：`lab-factory serve-mcp`。
 - 一套用户可见、可编辑、可迭代的专属科目 skill 生成流程。
 
+当前实现、验证范围、已知限制和下一阶段任务见 [PROJECT_STATUS.md](PROJECT_STATUS.md)。
+
 如果你是 Claude Code、Codex 或其他 agent，用户让你“部署这个压缩包/安装包”时，先阅读根目录的 `INSTALL_FOR_AGENT.md`，再执行部署。不要在部署阶段开始写实验报告。
 
-核心工厂逻辑负责材料清点、DOCX/MD 解析、模板保全、spec 校验、专属 skill 脚手架、fill-map 校验和受控写回；专属 skill 负责某个用户、某门课、某类模板的实际实验报告流程。
+v2 把产品收敛为“可靠模板编译器”：首次把课程 DOCX 编译成可审查的模板配置，后续只自动采用高置信度位置，对歧义位置询问用户，并通过持久化状态机强制草稿审阅和 Finalize 门禁。
 
 ## 当前能力
+
+### v2 主流程
+
+- OOXML inventory：解析正文、表格单元格、页眉页脚、样式、编号和图片关系，并标记文本框、公式、域、修订等不可自动写入对象。
+- `template-profile.json`：保存稳定结构路径、表格坐标、上下文和样式来源。
+- 定位评分：`auto >= 0.90` 且领先第二候选 `>= 0.15`；`confirm` 必须用户选择；`blocked` 禁止写入。
+- 最小 OOXML 写回：只修改被审计的 DOCX part，非目标部件内容哈希保持不变。
+- 持久化状态机：需求、定位、内容、草稿审阅、Finalize 和 Skill 迭代均有前置门禁。
+- 课程写作画像、参考样本 style card、每报告 variation seed 和严格相似性门禁。
+- v1 fill-map 读取迁移；旧字符串锚点必须重新定位，不能直接升级为高置信度。
+
+### v1 兼容能力
 
 - `lab_factory_status`：查看激活状态和本地配置。
 - `lab_factory_activate`：输入免费测试版激活码。
@@ -56,6 +70,14 @@ lab-factory scaffold-skill <skill-spec.md> <输出目录>
 lab-factory validate-skill <专属skill目录>
 lab-factory validate-fill-map <fill-map.json>
 lab-factory apply-fill-map <fill-map.json> --output <草稿副本.docx>
+lab-factory inventory-v2 <模板.docx> --output <inventory.json>
+lab-factory create-profile-v2 <inventory.json> <template-profile.json> --subject <课程> --fields-json '<字段数组>'
+lab-factory propose-v2 <template-profile.json> <新模板.docx> --output <placement-plan.json>
+lab-factory apply-v2 <template-profile.json> <模板.docx> <content-package.json> <草稿.docx>
+lab-factory create-session-v2 <报告工作区> --subject <课程>
+lab-factory writing-profile-v2 <writing-profile.json> --subject <课程> --preset balanced
+lab-factory similarity-v2 <生成报告> <参考报告...>
+lab-factory migrate-v1 <fill-map.json> <migration-draft.json>
 lab-factory test
 ```
 

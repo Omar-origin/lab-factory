@@ -9,6 +9,9 @@ import re
 from pathlib import Path
 
 
+FACTORY_ROOT = Path(__file__).resolve().parent.parent
+
+
 FILL_MAP_SCHEMA = {
     "type": "object",
     "required": ["version", "source_fill", "target_document", "copy_mode", "format_strategy", "items"],
@@ -410,7 +413,7 @@ def main() -> int:
 name: {slug}
 description: |
   {title} 专属实验报告 skill。当用户要求完成该科目、该模板系列或同类实验报告时使用。
-  先生成 fill.md + fill-map.json，用户确认后再由 MCP 复制原文件并按锚点填入副本。
+  使用 Lab Factory v2 的结构化需求摘要、模板配置、内容包和持久化会话；低置信度位置经用户确认后才写入副本。
 ---
 
 # {title} 专属实验报告 Skill
@@ -432,8 +435,9 @@ description: |
 
 ## 最高优先级规则
 
-- 先生成 `fill.md + fill-map.json`，不要直接改文档。
-- 用户确认 `fill.md` 后，才允许复制源文件并填入副本。
+- 所有新任务使用 v2；v1 `fill-map.json` 只允许迁移后重新定位。
+- 先创建持久化会话、确认 requirements-summary、解析 OOXML inventory、解决定位，再生成 content-package 和草稿。
+- 关键产物是 `requirements-summary.json`、`template-profile.json`、`content-package.json`；每份报告沿用会话 `variation_seed`，低置信度定位必须用户确认。
 - 第一次只填补，不删除、不改写、不重排原文，不改变原结构、字体、字号、内容、格式和排版。
 - 当前实验编号只能作为样例，不要把它当成唯一适配范围，除非本 skill 明确是实验级。
 - 生成 `fill.md` 前必须先从头到尾完整阅读实验报告、任务书和文末提交说明，充分理解后复述任务要求，并等待用户确认；然后再根据模板多轮确认写作规范、内容粒度、实验小结结构、必用工具、运行环境、源码/Notebook、截图来源、提交清单和 finalize 边界。
@@ -442,10 +446,11 @@ description: |
 - 复制原文件必须是字节级副本；新增内容继承目标锚点样式，不能整篇重建 DOCX。
 - DOCX 默认使用 `python-docx + lxml` 做副本内最小范围填补；`docxtpl` 只用于受控占位符模板，`Mammoth` 只用于辅助抽取，`pywin32 COM` 只作为 Windows + Word 可选增强。
 - 截图和绘图只能来自真实运行、用户材料或可复现代码输出；缺失时只留占位和操作提示，不使用生图伪造截图。
-- 参考案例只学格式，不复制内容。
-- 草稿输出后必须询问用户是否满意或有问题；有问题先修正，没问题则等待用户补齐截图/绘图/数据后再二次修改。
+- 参考案例只生成 style card，不保存或复制正文；Finalize 前必须通过严格相似性门禁。
+- 草稿输出后必须让用户在 WPS 或实际编辑器中检查位置、表格、分页和图片，并记录 review_id 与反馈；有问题先修正。
 - Finalize 前必须确认删除项、封面信息和文件命名方式，并在最终版末尾添加免责声明。
-- 不保存姓名、学号、账号、完整报告正文、原始数据或截图到 skill。
+- 最终稿后提供继续修改、审阅并更新 Skill、完成但不更新三个出口。
+- 不保存姓名、学号、账号、完整报告正文、原始数据、参考样本正文或截图到 skill。
 
 ## Workflow
 
@@ -468,26 +473,30 @@ description: |
 2. 复述任务要求：实验目标、任务步骤、填写范围、不可触碰区域、工具环境、源码/Notebook、截图来源、提交清单、命名规则和缺失材料。
 3. 等待用户确认理解无误；如果用户指出误解，先修正复述。
 4. 结合模板和任务书，多轮确认填写范围、不可触碰范围、写作规范、内容粒度、实验小结结构、必用工具、运行环境、源码/Notebook、截图来源、提交清单和 finalize 边界；用户选择默认时展开 `references/default-writing-parameters.md` 的具体默认值，并把它们当成本次用户要求。
-5. 生成 `fill.md`。
-6. 生成带 `copy_mode: byte_for_byte_first` 和 `format_strategy: inherit_target_anchor` 的 `fill-map.json`。
-7. 等待用户确认。
-8. 用户确认后，调用 MCP 文件处理能力字节级复制并填入副本。
-9. 输出草稿后，询问用户：`请查看，草稿是否可以？是否存在什么问题？有哪些需要修改的地方？`
-10. 用户指出问题时，先修正新增内容、占位、`fill.md` 或 `fill-map.json`，再请用户检查。
-11. 用户确认草稿没问题但仍需插入图片/截图/数据时，暂停等待用户完成，并提醒用户回来进行第二次修改。
-12. Finalize：调整排版，删除用户确认可删内容，添加文末免责声明，询问文件命名方式并输出最终版。
-13. 用户确认最终版后，询问用户是否要更新迭代 skill；先说明拟优化方向，用户确认后才写入。
+5. 创建 v2 会话，生成并确认 `requirements-summary.json`；只追问缺失和冲突项。
+6. 生成 OOXML inventory；首次确认节点并编译 `template-profile.json`，后续复用并处理 confirm/blocked 候选。
+7. 读取课程 `writing-profile.json` 和可选 `style-card.json`，沿用会话 `variation_seed` 生成 `content-package.json`。
+8. 状态到达 `content_ready` 后调用 v2 安全写入工具生成草稿。
+9. 输出草稿后，让用户在 WPS 检查位置、表格、分页和图片，并记录 `review_id` 与反馈。
+10. 用户指出问题时回到内容阶段；用户批准后才能 Finalize。
+11. Finalize 前执行参考样本相似性门禁；失败时标出命中并重写，不得绕过。
+12. 通过后整理终稿、确认文件命名和免责声明。
+13. 提供继续修改、审阅更新 diff 后更新 Skill、完成但不更新三个出口。
 """
 
     write_file(skill_dir / "SKILL.md", skill_md)
     write_file(skill_dir / "references" / "workflow.md", workflow)
     write_file(
+        skill_dir / "references" / "v2-workflow.md",
+        (FACTORY_ROOT / "references" / "v2-workflow.md").read_text(encoding="utf-8"),
+    )
+    write_file(
         skill_dir / "references" / "fill-policy.md",
-        "# Fill Policy\n\n先生成 fill.md 和 fill-map.json，用户确认后再填入副本。生成 fill.md 前必须先完成文档理解门禁：从头到尾完整阅读模板、任务书和文末提交说明，复述实验目标、任务步骤、填写范围、不可触碰区域、工具环境、源码/Notebook、截图来源、提交清单、命名规则和缺失材料，并等待用户确认理解无误。之后再根据模板多轮确认写作规范、内容粒度、实验小结结构、必用工具、运行环境、源码/Notebook、截图来源、提交清单和 finalize 边界；用户选择默认时，必须展开 references/default-writing-parameters.md 的具体值，并把默认值当成本次用户要求执行。fill.md 必须包含文档理解与任务复述、写作规范确认摘要、内容粒度确认摘要、工具环境与提交确认摘要。默认正文为小四、中文宋体、英文 Times New Roman、黑色、首行缩进默认度量值 2；正文说明点约 150-200 字；若模板包含“问题和解决办法、心得体会、意见与建议”，且用户采用默认，实验小结必须生成 3 个问题、3 个心得点、3 个建议点，每点约 100 字。每个阶段都要请用户检查并鼓励修正。DOCX 默认用 python-docx + lxml 在字节级副本上最小范围填补；docxtpl 只用于受控占位符模板；Mammoth 只用于辅助抽取，不写回；pywin32 COM 只作为 Windows + Word 可选增强。fill-map 顶层必须包含 copy_mode: byte_for_byte_first 和 format_strategy: inherit_target_anchor；每个 item 必须 preserve_original: true 并继承目标锚点样式。第一次草稿不得改变原结构、字体、字号、内容、格式和排版。\n",
+        "# Fill Policy\n\n所有新任务使用 Lab Factory v2：先创建会话和 requirements-summary，再生成 OOXML inventory、编译或复用 template-profile，最后生成 content-package。auto 定位才能自动采用；confirm 必须展示候选并记录用户选择；blocked 禁止写入，不得回退到第一个字符串命中。内容写入使用 python-docx + lxml/OOXML 最小修改，保留非目标 DOCX 部件；docxtpl 只用于工厂控制的标准占位模板。v1 fill-map 顶层仍需 copy_mode: byte_for_byte_first、format_strategy: inherit_target_anchor、preserve_original: true，但只能通过迁移工具重新定位。第一次草稿不得改变原结构、字体、字号、内容、格式和排版。\n",
     )
     write_file(
         skill_dir / "references" / "finalize-policy.md",
-        "# Finalize Policy\n\n草稿输出后必须询问用户是否可以、是否存在问题、有哪些需要修改。用户指出问题时先修正新增内容、占位、fill.md 或 fill-map.json；用户确认草稿没问题但仍需图片、截图、绘图或真实数据时，暂停等待用户完成，并提醒用户回来进行第二次修改。\n\nFinalize 前必须确认：截图/绘图/数据是否补齐，哪些模板提示、占位和草稿提示可以删除，哪些原文必须保留，封面个人信息，文件命名方式，以及是否还有排版问题。个人信息和文件命名只用于本次最终版，不写入 skill。\n\nFinalize 必须调整排版、删除用户确认可删内容、在报告最后添加免责声明，并按用户确认的命名方式输出最终版。免责声明：本文档中的 AI 辅助生成内容仅供学习参考，使用者应结合个人真实实验过程自行核验，并遵守课程要求和学术规范。\n\n最终版输出后必须请用户检查；用户确认满意后，才询问是否要更新迭代 skill。更新前先说明拟优化方向，用户确认后才写入。\n",
+        "# Finalize Policy\n\n草稿输出后必须让用户在 WPS 或实际编辑器检查写入位置、表格、分页和图片，并使用 review_id 记录是否批准及反馈。用户指出问题时回到内容阶段；截图或真实数据缺失时暂停等待。\n\nFinalize 前必须确认截图/数据、删除范围、封面信息和文件命名，并执行参考样本相似性门禁。门禁失败必须标出命中并重写，不得绕过。\n\nFinalize 必须调整排版、删除用户确认可删内容、添加免责声明并输出最终版。最终版后提供三个出口：继续修改、审阅 Skill 更新 diff 后确认更新、完成但不更新。个人信息、样本正文、本次报告正文和一次性异常不得写入 Skill。\n",
     )
     write_file(
         skill_dir / "references" / "formatting-notes.md",
@@ -508,6 +517,17 @@ description: |
         skill_dir / "assets" / "fill-map.schema.json",
         json.dumps(FILL_MAP_SCHEMA, ensure_ascii=False, indent=2) + "\n",
     )
+    for schema_name in [
+        "requirements-summary-v2.schema.json",
+        "template-profile-v2.schema.json",
+        "content-package-v2.schema.json",
+        "writing-profile-v2.schema.json",
+        "style-card-v2.schema.json",
+    ]:
+        write_file(
+            skill_dir / "assets" / schema_name,
+            (FACTORY_ROOT / "assets" / schema_name).read_text(encoding="utf-8"),
+        )
     write_file(
         skill_dir / "evals" / "evals.json",
         json.dumps(starter_evals(slug, title), ensure_ascii=False, indent=2) + "\n",

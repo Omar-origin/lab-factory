@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Lab Factory v2 Course Writing Profile",
+  "type": "object",
+  "required": ["version", "subject", "preset", "dimensions"],
+  "properties": {
+    "version": {"const": "2.0"},
+    "subject": {"type": "string", "minLength": 1},
+    "preset": {"enum": ["balanced", "concise", "technical", "personal"]},
+    "dimensions": {
+      "type": "object",
+      "required": ["level", "detail", "reflection", "tone"],
+      "properties": {
+        "level": {"enum": ["基础", "自然本科", "较成熟"]},
+        "detail": {"enum": ["精简", "均衡", "详细"]},
+        "reflection": {"enum": ["问题解决", "学习过程", "工程实践", "批判改进"]},
+        "tone": {"enum": ["朴素", "规范", "技术型", "个人化"]}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": true
+}

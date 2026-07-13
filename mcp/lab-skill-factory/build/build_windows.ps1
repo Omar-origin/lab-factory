@@ -27,6 +27,7 @@ pyinstaller `
   --specpath (Join-Path $McpDir "build") `
   --hidden-import docx `
   --hidden-import lxml `
+  --collect-data docx `
   --add-data "$RootDir\skills\lab-skill-factory;skills\lab-skill-factory" `
   --add-data "$McpDir\scripts;scripts" `
   --add-data "$McpDir\evals;evals" `

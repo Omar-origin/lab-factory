@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Lab Factory v2 Reference Style Card",
+  "type": "object",
+  "required": ["version", "features"],
+  "properties": {
+    "version": {"const": "2.0"},
+    "features": {
+      "type": "object",
+      "required": ["section_organization", "sentence_length", "paragraph_length", "terminology_ratio", "analysis_order", "person_voice", "reflection_pattern", "forbidden_phrases"],
+      "properties": {
+        "section_organization": {},
+        "sentence_length": {},
+        "paragraph_length": {},
+        "terminology_ratio": {},
+        "analysis_order": {},
+        "person_voice": {},
+        "reflection_pattern": {},
+        "forbidden_phrases": {"type": "array", "items": {"type": "string"}}
+      },
+      "additionalProperties": true
+    }
+  },
+  "not": {"anyOf": [{"required": ["sample_text"]}, {"required": ["full_text"]}, {"required": ["report_body"]}]},
+  "additionalProperties": true
+}

@@ -26,7 +26,7 @@ from typing import Any
 
 
 SERVER_NAME = "lab-factory-mcp"
-SERVER_VERSION = "0.1.0"
+SERVER_VERSION = "0.2.0"
 PROTOCOL_VERSION = "2024-11-05"
 
 FROZEN = bool(getattr(sys, "frozen", False))
@@ -733,6 +733,320 @@ def tool_apply_fill_map(args: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def run_v2(args: list[str], *, timeout: int = 120, allow_validation_failure: bool = False) -> dict[str, Any]:
+    codes = (0, 1) if allow_validation_failure else (0,)
+    return run_skill_script("v2_engine.py", args, timeout=timeout, ok_return_codes=codes)
+
+
+def require_string(args: dict[str, Any], key: str) -> str:
+    value = args.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise ToolError(f"{key} 必须是非空字符串。")
+    return value.strip()
+
+
+def v2_session_status(workspace: str) -> dict[str, Any]:
+    return run_v2(["session-status", resolve_user_path(workspace)])
+
+
+def require_v2_state(workspace: str, expected: set[str]) -> dict[str, Any]:
+    result = v2_session_status(workspace)
+    state = ((result.get("session") or {}).get("state"))
+    if state not in expected:
+        raise ToolError(f"当前 v2 会话状态为 {state}，此操作要求状态为：{', '.join(sorted(expected))}。")
+    return result
+
+
+def tool_v2_inventory(args: dict[str, Any]) -> dict[str, Any]:
+    require_activation()
+    command = ["inventory", resolve_user_path(require_string(args, "docx_path"))]
+    output = args.get("output_path")
+    if isinstance(output, str) and output.strip():
+        command.extend(["--output", resolve_user_path(output)])
+    result = run_v2(command)
+    result["mcp_next_step"] = "让用户检查可写节点；文本框、公式、域和修订节点不得自动写入。"
+    return result
+
+
+def tool_v2_create_template_profile(args: dict[str, Any]) -> dict[str, Any]:
+    require_activation()
+    fields = args.get("fields")
+    if not isinstance(fields, list) or not fields:
+        raise ToolError("fields 必须是非空数组，每项至少包含 id、node_id 和 operation。")
+    return run_v2(
+        [
+            "create-profile", resolve_user_path(require_string(args, "inventory_path")),
+            "--fields-json", json.dumps(fields, ensure_ascii=False),
+            "--subject", require_string(args, "subject"),
+            "--output", resolve_user_path(require_string(args, "output_path")),
+        ]
+    )
+
+
+def tool_v2_validate_template_profile(args: dict[str, Any]) -> dict[str, Any]:
+    require_activation()
+    return run_v2(
+        ["validate-profile", resolve_user_path(require_string(args, "profile_path"))],
+        allow_validation_failure=True,
+    )
+
+
+def tool_v2_propose_placements(args: dict[str, Any]) -> dict[str, Any]:
+    require_activation()
+    command = [
+        "propose", resolve_user_path(require_string(args, "profile_path")),
+        resolve_user_path(require_string(args, "docx_path")),
+    ]
+    output = args.get("output_path")
+    if isinstance(output, str) and output.strip():
+        command.extend(["--output", resolve_user_path(output)])
+    result = run_v2(command)
+    result["mcp_next_step"] = (
+        "auto 项可直接采用；confirm 项必须把候选上下文展示给用户并调用 resolve_placements；"
+        "blocked 项不得写入。"
+    )
+    return result
+
+
+def tool_v2_create_session(args: dict[str, Any]) -> dict[str, Any]:
+    require_activation()
+    command = [
+        "create-session", resolve_user_path(require_string(args, "workspace")),
+        "--subject", require_string(args, "subject"),
+    ]
+    report_id = args.get("report_id")
+    if isinstance(report_id, str) and report_id.strip():
+        command.extend(["--report-id", report_id.strip()])
+    return run_v2(command)
+
+
+def tool_v2_session_status(args: dict[str, Any]) -> dict[str, Any]:
+    require_activation()
+    return v2_session_status(require_string(args, "workspace"))
+
+
+def tool_v2_confirm_requirements(args: dict[str, Any]) -> dict[str, Any]:
+    require_activation()
+    workspace = require_string(args, "workspace")
+    require_v2_state(workspace, {"materials_scanned"})
+    validation = run_v2(
+        ["validate-requirements", resolve_user_path(require_string(args, "requirements_path"))],
+        allow_validation_failure=True,
+    )
+    if not validation.get("ok"):
+        raise ToolError(f"需求摘要未通过校验：{validation.get('errors')}")
+    feedback = require_string(args, "user_confirmation_summary")
+    return run_v2(
+        ["advance-session", resolve_user_path(workspace), "--event", "confirm_requirements", "--feedback", feedback]
+    )
+
+
+def tool_v2_resolve_placements(args: dict[str, Any]) -> dict[str, Any]:
+    require_activation()
+    workspace = require_string(args, "workspace")
+    require_v2_state(workspace, {"requirements_confirmed"})
+    plan_path = Path(resolve_user_path(require_string(args, "placement_plan_path")))
+    try:
+        plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ToolError(f"无法读取 placement plan：{exc}") from exc
+    selections = args.get("selections")
+    if not isinstance(selections, list):
+        raise ToolError("selections 必须是数组。")
+    selected = {item.get("field_id"): item.get("node_id") for item in selections if isinstance(item, dict)}
+    errors = []
+    for proposal in plan.get("proposals", []):
+        if proposal.get("decision") == "blocked":
+            errors.append(f"{proposal.get('field_id')} 没有可靠候选，不能继续")
+        if proposal.get("decision") == "confirm":
+            allowed = {item.get("node_id") for item in proposal.get("candidates", [])}
+            if selected.get(proposal.get("field_id")) not in allowed:
+                errors.append(f"{proposal.get('field_id')} 尚未选择有效候选")
+    if errors:
+        raise ToolError("；".join(errors))
+    feedback = require_string(args, "user_confirmation_summary")
+    profile_result = run_v2(
+        [
+            "confirm-profile", resolve_user_path(require_string(args, "profile_path")),
+            resolve_user_path(require_string(args, "docx_path")), str(plan_path),
+            "--selections-json", json.dumps(selections, ensure_ascii=False),
+            "--summary", feedback,
+            "--output", resolve_user_path(require_string(args, "updated_profile_path")),
+        ]
+    )
+    audit_summary = json.dumps({"confirmation": feedback, "selections": selected}, ensure_ascii=False)
+    transition = run_v2(
+        ["advance-session", resolve_user_path(workspace), "--event", "resolve_placements", "--feedback", audit_summary]
+    )
+    return {"ok": True, "profile": profile_result, "session": transition.get("session")}
+
+
+def tool_v2_mark_content_ready(args: dict[str, Any]) -> dict[str, Any]:
+    require_activation()
+    workspace = require_string(args, "workspace")
+    require_v2_state(workspace, {"placements_resolved", "draft_reviewed"})
+    return run_v2(
+        ["advance-session", resolve_user_path(workspace), "--event", "mark_content_ready", "--feedback", require_string(args, "content_summary")]
+    )
+
+
+def tool_v2_apply_draft(args: dict[str, Any]) -> dict[str, Any]:
+    require_activation()
+    workspace = require_string(args, "workspace")
+    require_v2_state(workspace, {"content_ready"})
+    command = [
+        "apply", resolve_user_path(require_string(args, "profile_path")),
+        resolve_user_path(require_string(args, "docx_path")),
+        resolve_user_path(require_string(args, "content_package_path")),
+        "--output", resolve_user_path(require_string(args, "output_path")),
+    ]
+    if args.get("overwrite") is True:
+        command.append("--overwrite")
+    result = run_v2(command, timeout=180)
+    transition = run_v2(["advance-session", resolve_user_path(workspace), "--event", "record_draft"])
+    result["session"] = transition.get("session")
+    result["mcp_next_step"] = "必须让用户在 WPS 中检查草稿；未提交 draft review 前不得 finalize。"
+    return result
+
+
+def tool_v2_review_draft(args: dict[str, Any]) -> dict[str, Any]:
+    require_activation()
+    workspace = require_string(args, "workspace")
+    require_v2_state(workspace, {"draft_generated"})
+    decision = require_string(args, "decision")
+    if decision not in {"approve", "revise"}:
+        raise ToolError("decision 只能是 approve 或 revise。")
+    event = "approve_draft" if decision == "approve" else "revise_draft"
+    return run_v2(
+        [
+            "advance-session", resolve_user_path(workspace), "--event", event,
+            "--review-id", require_string(args, "review_id"),
+            "--feedback", require_string(args, "user_feedback_summary"),
+        ]
+    )
+
+
+def tool_v2_finalize(args: dict[str, Any]) -> dict[str, Any]:
+    require_activation()
+    workspace = require_string(args, "workspace")
+    require_v2_state(workspace, {"draft_reviewed"})
+    command = ["similarity", resolve_user_path(require_string(args, "generated_path"))]
+    references = args.get("reference_paths", [])
+    if not isinstance(references, list) or not all(isinstance(item, str) for item in references):
+        raise ToolError("reference_paths 必须是字符串数组。")
+    command.extend(resolve_user_path(item) for item in references)
+    if not references:
+        # argparse requires one reference; no reference means the anti-copy gate has no comparison surface.
+        similarity = {"ok": True, "gate": "pass", "findings": [], "note": "No reference samples supplied."}
+    else:
+        whitelist = args.get("whitelist", [])
+        if not isinstance(whitelist, list) or not all(isinstance(item, str) for item in whitelist):
+            raise ToolError("whitelist 必须是字符串数组。")
+        command.extend(["--whitelist-json", json.dumps(whitelist, ensure_ascii=False)])
+        similarity = run_v2(command, allow_validation_failure=True)
+    if not similarity.get("ok"):
+        raise ToolError(f"相似性门禁阻止 finalize：{similarity.get('findings')}")
+    transition = run_v2(
+        [
+            "advance-session", resolve_user_path(workspace), "--event", "finalize",
+            "--review-id", require_string(args, "review_id"),
+            "--feedback", require_string(args, "user_confirmation_summary"),
+        ]
+    )
+    return {"ok": True, "similarity_gate": similarity, "session": transition.get("session"), "next_actions": ["continue_revision", "review_skill_update", "finish_without_update"]}
+
+
+def tool_v2_decide_iteration(args: dict[str, Any]) -> dict[str, Any]:
+    require_activation()
+    workspace = require_string(args, "workspace")
+    require_v2_state(workspace, {"finalized"})
+    decision = require_string(args, "decision")
+    if decision == "continue_revision":
+        event = "revise_draft"
+    elif decision == "finish_without_update":
+        event = "finish_without_update"
+    else:
+        raise ToolError("decision 只能是 continue_revision 或 finish_without_update；更新 Skill 请先 propose diff，再调用 apply_skill_update。")
+    return run_v2(
+        [
+            "advance-session", resolve_user_path(workspace), "--event", event,
+            "--review-id", require_string(args, "review_id"),
+            "--feedback", require_string(args, "user_feedback_summary"),
+        ]
+    )
+
+
+def tool_v2_create_writing_profile(args: dict[str, Any]) -> dict[str, Any]:
+    require_activation()
+    overrides = args.get("overrides", {})
+    if not isinstance(overrides, dict):
+        raise ToolError("overrides 必须是对象。")
+    return run_v2(
+        [
+            "create-writing-profile", "--subject", require_string(args, "subject"),
+            "--preset", str(args.get("preset", "balanced")),
+            "--overrides-json", json.dumps(overrides, ensure_ascii=False),
+            "--output", resolve_user_path(require_string(args, "output_path")),
+        ]
+    )
+
+
+def tool_v2_validate_style_card(args: dict[str, Any]) -> dict[str, Any]:
+    require_activation()
+    return run_v2(
+        ["validate-style-card", resolve_user_path(require_string(args, "style_card_path"))],
+        allow_validation_failure=True,
+    )
+
+
+def tool_v2_migrate_v1(args: dict[str, Any]) -> dict[str, Any]:
+    require_activation()
+    return run_v2(
+        [
+            "migrate-v1", resolve_user_path(require_string(args, "fill_map_path")),
+            "--output", resolve_user_path(require_string(args, "output_path")),
+        ]
+    )
+
+
+def tool_v2_propose_skill_update(args: dict[str, Any]) -> dict[str, Any]:
+    require_activation()
+    workspace = require_string(args, "workspace")
+    require_v2_state(workspace, {"finalized"})
+    updates = args.get("updates")
+    if not isinstance(updates, list) or not updates:
+        raise ToolError("updates 必须是非空数组。")
+    return run_v2(
+        [
+            "propose-skill-update", resolve_user_path(require_string(args, "skill_dir")),
+            "--updates-json", json.dumps(updates, ensure_ascii=False),
+            "--output", resolve_user_path(require_string(args, "output_path")),
+        ]
+    )
+
+
+def tool_v2_apply_skill_update(args: dict[str, Any]) -> dict[str, Any]:
+    require_activation()
+    workspace = require_string(args, "workspace")
+    require_v2_state(workspace, {"finalized"})
+    proposal_path = Path(resolve_user_path(require_string(args, "proposal_path")))
+    try:
+        proposal = json.loads(proposal_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ToolError(f"无法读取 Skill 更新提案：{exc}") from exc
+    if proposal.get("update_id") != require_string(args, "update_id"):
+        raise ToolError("update_id 与用户审阅的提案不一致。")
+    result = run_v2(["apply-skill-update", str(proposal_path)])
+    transition = run_v2(
+        [
+            "advance-session", resolve_user_path(workspace), "--event", "update_skill",
+            "--review-id", require_string(args, "review_id"),
+            "--feedback", require_string(args, "user_confirmation_summary"),
+        ]
+    )
+    return {"ok": True, "update": result, "session": transition.get("session")}
+
+
 def validate_scaffolded_skill_dir(skill_path: str) -> dict[str, Any]:
     return run_skill_script(
         "validate_scaffolded_skill.py",
@@ -988,6 +1302,190 @@ TOOLS: dict[str, dict[str, Any]] = {
         },
         "handler": tool_get_factory_guidance,
     },
+    "lab_factory_v2_inventory_docx": {
+        "description": "解析 DOCX OOXML 结构，为正文、表格单元格、页眉页脚生成稳定节点 ID，并标记不可安全自动写入的复杂对象。",
+        "inputSchema": {
+            "type": "object", "required": ["docx_path"],
+            "properties": {"docx_path": {"type": "string"}, "output_path": {"type": "string"}},
+            "additionalProperties": False,
+        },
+        "handler": tool_v2_inventory,
+    },
+    "lab_factory_v2_create_template_profile": {
+        "description": "根据用户确认的 inventory 节点编译可复用的 v2 模板配置。",
+        "inputSchema": {
+            "type": "object", "required": ["inventory_path", "subject", "fields", "output_path"],
+            "properties": {
+                "inventory_path": {"type": "string"}, "subject": {"type": "string"},
+                "output_path": {"type": "string"},
+                "fields": {"type": "array", "minItems": 1, "items": {"type": "object"}},
+            },
+            "additionalProperties": False,
+        },
+        "handler": tool_v2_create_template_profile,
+    },
+    "lab_factory_v2_validate_template_profile": {
+        "description": "校验用户可见、可编辑的 template-profile.json；未通过校验的配置不能生效。",
+        "inputSchema": {"type": "object", "required": ["profile_path"], "properties": {"profile_path": {"type": "string"}}, "additionalProperties": False},
+        "handler": tool_v2_validate_template_profile,
+    },
+    "lab_factory_v2_propose_placements": {
+        "description": "用模板配置为新 DOCX 评分并提出 auto/confirm/blocked 定位候选；不使用第一个字符串匹配作为回退。",
+        "inputSchema": {
+            "type": "object", "required": ["profile_path", "docx_path"],
+            "properties": {"profile_path": {"type": "string"}, "docx_path": {"type": "string"}, "output_path": {"type": "string"}},
+            "additionalProperties": False,
+        },
+        "handler": tool_v2_propose_placements,
+    },
+    "lab_factory_v2_create_session": {
+        "description": "创建可跨客户端重启恢复的 v2 报告会话，保存 variation seed、状态和审计日志。",
+        "inputSchema": {
+            "type": "object", "required": ["workspace", "subject"],
+            "properties": {"workspace": {"type": "string"}, "subject": {"type": "string"}, "report_id": {"type": "string"}},
+            "additionalProperties": False,
+        },
+        "handler": tool_v2_create_session,
+    },
+    "lab_factory_v2_session_status": {
+        "description": "恢复并查看 v2 报告会话状态。",
+        "inputSchema": {"type": "object", "required": ["workspace"], "properties": {"workspace": {"type": "string"}}, "additionalProperties": False},
+        "handler": tool_v2_session_status,
+    },
+    "lab_factory_v2_confirm_requirements": {
+        "description": "校验结构化需求摘要并记录用户确认；存在冲突或缺失章节时不能进入定位阶段。",
+        "inputSchema": {
+            "type": "object", "required": ["workspace", "requirements_path", "user_confirmation_summary"],
+            "properties": {"workspace": {"type": "string"}, "requirements_path": {"type": "string"}, "user_confirmation_summary": {"type": "string"}},
+            "additionalProperties": False,
+        },
+        "handler": tool_v2_confirm_requirements,
+    },
+    "lab_factory_v2_resolve_placements": {
+        "description": "记录用户对低置信度候选的选择；存在 blocked 项或未确认 confirm 项时拒绝继续。",
+        "inputSchema": {
+            "type": "object", "required": ["workspace", "profile_path", "docx_path", "placement_plan_path", "updated_profile_path", "selections", "user_confirmation_summary"],
+            "properties": {
+                "workspace": {"type": "string"}, "placement_plan_path": {"type": "string"},
+                "profile_path": {"type": "string"}, "docx_path": {"type": "string"},
+                "updated_profile_path": {"type": "string"},
+                "selections": {"type": "array", "items": {"type": "object", "required": ["field_id", "node_id"], "properties": {"field_id": {"type": "string"}, "node_id": {"type": "string"}}, "additionalProperties": False}},
+                "user_confirmation_summary": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+        "handler": tool_v2_resolve_placements,
+    },
+    "lab_factory_v2_mark_content_ready": {
+        "description": "在需求和定位均确认后记录结构化内容包已就绪。",
+        "inputSchema": {"type": "object", "required": ["workspace", "content_summary"], "properties": {"workspace": {"type": "string"}, "content_summary": {"type": "string"}}, "additionalProperties": False},
+        "handler": tool_v2_mark_content_ready,
+    },
+    "lab_factory_v2_apply_draft": {
+        "description": "仅在 content_ready 状态执行安全 OOXML 写回，保留非目标 DOCX 部件并自动进入草稿审阅状态。",
+        "inputSchema": {
+            "type": "object", "required": ["workspace", "profile_path", "docx_path", "content_package_path", "output_path"],
+            "properties": {
+                "workspace": {"type": "string"}, "profile_path": {"type": "string"},
+                "docx_path": {"type": "string"}, "content_package_path": {"type": "string"},
+                "output_path": {"type": "string"}, "overwrite": {"type": "boolean", "default": False},
+            },
+            "additionalProperties": False,
+        },
+        "handler": tool_v2_apply_draft,
+    },
+    "lab_factory_v2_review_draft": {
+        "description": "记录用户在 WPS 中对草稿的 approve/revise 决定、review_id 和反馈摘要。",
+        "inputSchema": {
+            "type": "object", "required": ["workspace", "review_id", "decision", "user_feedback_summary"],
+            "properties": {
+                "workspace": {"type": "string"}, "review_id": {"type": "string"},
+                "decision": {"type": "string", "enum": ["approve", "revise"]},
+                "user_feedback_summary": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+        "handler": tool_v2_review_draft,
+    },
+    "lab_factory_v2_finalize": {
+        "description": "在草稿批准后执行参考样本防照抄门禁；通过后记录 finalize，并返回三个后续出口。",
+        "inputSchema": {
+            "type": "object", "required": ["workspace", "review_id", "generated_path", "user_confirmation_summary"],
+            "properties": {
+                "workspace": {"type": "string"}, "review_id": {"type": "string"},
+                "generated_path": {"type": "string"}, "reference_paths": {"type": "array", "items": {"type": "string"}},
+                "whitelist": {"type": "array", "items": {"type": "string"}},
+                "user_confirmation_summary": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+        "handler": tool_v2_finalize,
+    },
+    "lab_factory_v2_decide_iteration": {
+        "description": "最终稿后记录继续修改、确认更新 Skill 或完成但不更新三个出口之一。",
+        "inputSchema": {
+            "type": "object", "required": ["workspace", "review_id", "decision", "user_feedback_summary"],
+            "properties": {
+                "workspace": {"type": "string"}, "review_id": {"type": "string"},
+                "decision": {"type": "string", "enum": ["continue_revision", "finish_without_update"]},
+                "user_feedback_summary": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+        "handler": tool_v2_decide_iteration,
+    },
+    "lab_factory_v2_create_writing_profile": {
+        "description": "为一门课程创建可复用写作画像，支持预设和写作水平、详略、反思、语气四维覆盖。",
+        "inputSchema": {
+            "type": "object", "required": ["subject", "output_path"],
+            "properties": {
+                "subject": {"type": "string"}, "output_path": {"type": "string"},
+                "preset": {"type": "string", "enum": ["balanced", "concise", "technical", "personal"], "default": "balanced"},
+                "overrides": {"type": "object"},
+            },
+            "additionalProperties": False,
+        },
+        "handler": tool_v2_create_writing_profile,
+    },
+    "lab_factory_v2_validate_style_card": {
+        "description": "校验参考报告风格卡并禁止把完整样本正文存入专属 Skill。",
+        "inputSchema": {"type": "object", "required": ["style_card_path"], "properties": {"style_card_path": {"type": "string"}}, "additionalProperties": False},
+        "handler": tool_v2_validate_style_card,
+    },
+    "lab_factory_v2_migrate_v1": {
+        "description": "把 v1 fill-map 转成必须重新 inventory、重新定位和用户确认的 v2 迁移草案。",
+        "inputSchema": {
+            "type": "object", "required": ["fill_map_path", "output_path"],
+            "properties": {"fill_map_path": {"type": "string"}, "output_path": {"type": "string"}},
+            "additionalProperties": False,
+        },
+        "handler": tool_v2_migrate_v1,
+    },
+    "lab_factory_v2_propose_skill_update": {
+        "description": "在 finalized 状态生成受限 Skill 更新 diff；只允许稳定课程/模板规则，并拒绝个人信息、样本正文和报告正文。",
+        "inputSchema": {
+            "type": "object", "required": ["workspace", "skill_dir", "updates", "output_path"],
+            "properties": {
+                "workspace": {"type": "string"}, "skill_dir": {"type": "string"}, "output_path": {"type": "string"},
+                "updates": {"type": "array", "minItems": 1, "items": {"type": "object"}},
+            },
+            "additionalProperties": False,
+        },
+        "handler": tool_v2_propose_skill_update,
+    },
+    "lab_factory_v2_apply_skill_update": {
+        "description": "用户审阅 diff 后，用 update_id、review_id 和确认摘要原子应用 Skill 更新并结束迭代状态。",
+        "inputSchema": {
+            "type": "object", "required": ["workspace", "proposal_path", "update_id", "review_id", "user_confirmation_summary"],
+            "properties": {
+                "workspace": {"type": "string"}, "proposal_path": {"type": "string"},
+                "update_id": {"type": "string"}, "review_id": {"type": "string"},
+                "user_confirmation_summary": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+        "handler": tool_v2_apply_skill_update,
+    },
 }
 
 
@@ -1050,7 +1548,10 @@ def handle_request(message: dict[str, Any]) -> dict[str, Any] | None:
                     "protocolVersion": client_protocol or PROTOCOL_VERSION,
                     "capabilities": {"tools": {}},
                     "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
-                    "instructions": "Use lab_factory_activate before calling protected factory tools.",
+                    "instructions": (
+                        "Use lab_factory_activate before protected tools. New report workflows should use lab_factory_v2_*: "
+                        "create session, confirm requirements, inventory/compile template, resolve placements, apply draft, review, finalize."
+                    ),
                 },
             )
         if method == "notifications/initialized":
@@ -1156,6 +1657,7 @@ def self_test() -> int:
         "apply_fill_map.py",
         "validate_scaffolded_skill.py",
         "scaffold_subject_skill.py",
+        "v2_engine.py",
     ]:
         if not (root / "scripts" / script).exists():
             missing.append(script)

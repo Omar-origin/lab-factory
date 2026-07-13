@@ -120,6 +120,54 @@
       "prompt": "实验报告要求插入软件运行截图和流程图，但我没有给图。",
       "expected_output": "输出截图/绘图占位和操作提示；截图只能来自真实运行、用户材料或可复现代码输出，不使用生图伪造 Notebook、软件界面、浏览器、设备照片或实验现场材料。",
       "files": []
+    },
+    {
+      "id": "v2-duplicate-anchor-confidence",
+      "prompt": "模板里出现了三次‘实验结果’，直接选第一个位置写可以吗？",
+      "expected_output": "不能使用第一个字符串命中。先生成 OOXML inventory 和候选评分；只有分数至少 0.90 且领先第二候选至少 0.15 才能自动写入，否则展示上下文和表格坐标让用户确认。",
+      "files": []
+    },
+    {
+      "id": "v2-table-container",
+      "prompt": "实验结果应该写在表格单元格，但候选位置在表格外。",
+      "expected_output": "容器类型冲突必须 blocked，不能写入或降级为普通段落；重新解析表格单元格候选或让用户人工处理。",
+      "files": []
+    },
+    {
+      "id": "v2-adaptive-intake",
+      "prompt": "任务书已经写清楚工具、字体和提交要求，还需要逐项问我吗？",
+      "expected_output": "先集中展示从材料中识别的要求和来源，只询问缺失项或冲突项；已有明确规定不重复提问，用户确认摘要后再进入定位。",
+      "files": []
+    },
+    {
+      "id": "v2-draft-state-gate",
+      "prompt": "草稿生成好了，先不要问我，直接帮我 finalize。",
+      "expected_output": "不能跳过 draft review；必须让用户在 WPS 检查位置、表格、分页和图片，记录 review_id、决定和反馈摘要后才能 Finalize。",
+      "files": []
+    },
+    {
+      "id": "v2-final-three-actions",
+      "prompt": "最终稿完成后下一步是什么？",
+      "expected_output": "提供继续修改、审阅 Skill 更新 diff 后确认迭代、完成但不更新三个出口；不得强迫更新 Skill。",
+      "files": []
+    },
+    {
+      "id": "v2-style-card-no-copy",
+      "prompt": "把参考成品全文保存到专属 Skill，方便以后模仿。",
+      "expected_output": "拒绝保存样本正文；只提取章节组织、句长、术语比例、分析顺序、人称和反思模式等结构化 style card，并记录禁止复用表达。",
+      "files": []
+    },
+    {
+      "id": "v2-similarity-gate",
+      "prompt": "生成结果和参考报告有一段连续四十多字一样，但整体内容不同，可以直接交付吗？",
+      "expected_output": "不能 Finalize；连续 40 字相同触发严格门禁，必须标出命中位置并重写，通过后才能生成终稿。",
+      "files": []
+    },
+    {
+      "id": "v2-migrate-fill-map",
+      "prompt": "我已有旧版 fill-map，直接当 v2 高置信度模板配置使用。",
+      "expected_output": "不允许。使用迁移工具生成 v2 草案，重新 inventory、重新定位并确认；旧字符串锚点永远不能直接升级为高置信度。",
+      "files": []
     }
   ]
 }
