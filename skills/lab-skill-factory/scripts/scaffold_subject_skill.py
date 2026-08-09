@@ -297,7 +297,7 @@ SKILL_QUALITY_CONTRACT_MD = """# Skill Quality Contract
 2. **结构完整**：先建立任务地图、填写区域、不可触碰区域、证据要求和提交清单，再生成内容；不能只生成一篇看起来完整的正文。
 3. **写作质量**：复用课程写作画像和参考样本的结构化风格卡，控制详略、语气、术语密度和反思方式；不保存或复制参考正文。
 4. **差异化**：每份报告使用会话 `variation_seed`，允许用户调整写作水平、内容详略、反思取向、语言语气和句式节奏；变化不得覆盖事实、真实数据、格式和用户确认规则。
-5. **可检查与可微调**：输出应让用户能看懂、能纠正、能继续完成；需求确认、草稿审阅和终稿后都要有明确的反馈入口。
+5. **可检查与可微调**：输出应让用户能看懂、能纠正、能继续完成；正常任务只保留 preflight 和最终 DOCX 两个常规确认点，例外按风险提问。
 6. **格式与隐私安全**：源文件和非目标区域保持不变；个人信息、样本正文、一次性异常和未确认规则不进入专属 Skill。
 
 ## 生成前
@@ -314,13 +314,16 @@ SKILL_QUALITY_CONTRACT_MD = """# Skill Quality Contract
 
 ## 用户微调面板
 
-在生成正文前给用户一次简短的调整面板，尽量与缺失项/冲突项确认合并，最多询问 1–3 个强相关问题：
+首次建档收集 8 项稳定偏好；后续只询问缺失、冲突或会显著改变结果的强相关问题：
 
 - 写作水平：基础、自然本科、较成熟。
 - 内容详略：精简、均衡、详细。
+- 句段风格：短、混合、长。
+- 术语密度：低、中、高。
 - 反思取向：问题解决、学习过程、工程实践、批判改进。
 - 语言语气：朴素、规范、技术型、个人化。
-- 本次可选：更像说明书/更像实验记录、增加或减少小结长度、是否保留更多操作提示。
+- 分析顺序：原理优先、步骤优先、结果优先。
+- 个性化强度：低、中、高。
 
 用户可以直接说“按默认”或在草稿后指出具体段落怎么改。临时选择不能自动更新课程 Skill。
 
@@ -440,8 +443,8 @@ def build_quality_profile(slug: str, scope_level: str) -> dict:
             {
                 "id": "usability",
                 "name": "用户可检查与可微调",
-                "target": "每阶段给用户清晰的确认点、反馈入口和下一步",
-                "evidence": ["session-state.json", "review_id", "用户反馈摘要"],
+                "target": "正常任务只在 preflight 和最终 DOCX 确认，异常按风险提问",
+                "evidence": ["session-state.json", "interaction-plan.json", "确认次数"],
                 "gate": "ask_user",
             },
             {
@@ -454,22 +457,25 @@ def build_quality_profile(slug: str, scope_level: str) -> dict:
         ],
         "variation_controls": {
             "variation_seed": "session.variation_seed",
-            "dimensions": ["写作水平", "内容详略", "反思取向", "语言语气", "句式节奏", "举例角度"],
+            "dimensions": ["写作水平", "内容详略", "句段风格", "术语密度", "语言语气", "分析顺序", "反思角度", "个性化强度"],
             "protected_facts": ["任务书事实", "真实数据与截图", "课程格式", "用户确认规则"],
         },
         "user_adjustment_points": [
-            {"id": "level", "question": "这次希望写得基础、自然本科，还是更成熟？", "when": "requirements_confirmed", "default_allowed": True},
-            {"id": "detail", "question": "内容要精简、均衡还是详细？", "when": "requirements_confirmed", "default_allowed": True},
-            {"id": "reflection", "question": "小结更偏问题解决、学习过程、工程实践还是批判改进？", "when": "requirements_confirmed", "default_allowed": True},
-            {"id": "tone", "question": "语言保持朴素、规范、技术型还是更个人化？", "when": "requirements_confirmed", "default_allowed": True},
-            {"id": "draft_feedback", "question": "草稿哪些地方要更详细、简短、换角度或保留占位？", "when": "draft_reviewed", "default_allowed": False},
+            {"id": "writing_level", "question": "希望写得基础、自然本科，还是更成熟？", "when": "collecting_preferences", "default_allowed": True},
+            {"id": "detail_level", "question": "内容要精简、均衡还是详细？", "when": "collecting_preferences", "default_allowed": True},
+            {"id": "sentence_paragraph_style", "question": "句段偏短、混合还是偏长？", "when": "collecting_preferences", "default_allowed": True},
+            {"id": "terminology_density", "question": "术语密度低、中还是高？", "when": "collecting_preferences", "default_allowed": True},
+            {"id": "voice_tone", "question": "语言保持朴素、正式、技术型还是个人化？", "when": "collecting_preferences", "default_allowed": True},
+            {"id": "analysis_order", "question": "分析先讲原理、步骤还是结果？", "when": "collecting_preferences", "default_allowed": True},
+            {"id": "reflection_depth", "question": "反思偏学习过程、问题解决、工程实践还是批判改进？", "when": "collecting_preferences", "default_allowed": True},
+            {"id": "variation_strength", "question": "个性化强度低、中还是高？", "when": "collecting_preferences", "default_allowed": True},
         ],
         "quality_gates": [
             {"id": "source_coverage", "check": "每项硬要求有来源和状态", "action": "block"},
             {"id": "missing_evidence", "check": "真实数据、截图、源码缺失时有占位和待办", "action": "block"},
             {"id": "style_application", "check": "写作画像、风格卡、variation_seed 和已确认字数粒度已应用", "action": "block"},
             {"id": "anti_copy", "check": "参考样本仅用于风格，未复制正文或独特表达", "action": "block"},
-            {"id": "user_checkpoint", "check": "需求、草稿、终稿和 Skill 更新均有用户确认入口", "action": "ask_user"},
+            {"id": "user_checkpoint", "check": "正常任务只有 preflight 和最终 DOCX 两个常规确认点", "action": "ask_user"},
             {"id": "format_safety", "check": "模板配置、写入审计和非目标部件保全通过", "action": "block"},
             {"id": "privacy", "check": "Skill 中没有个人信息、原始路径或一次性报告内容", "action": "block"},
         ],
@@ -750,7 +756,7 @@ def main() -> int:
 name: {slug}
 description: |
   {safe_title} 专属实验报告 skill。当用户要求完成该科目、该模板系列或同类实验报告时使用。
-  使用 Lab Factory v2 的结构化需求摘要、模板配置、内容包和持久化会话；低置信度位置经用户确认后才写入副本。
+  使用 Lab Factory v2.1 报告自动驾驶、结构化需求摘要、模板配置和内容包；低置信度位置经用户确认后才写入副本。
 ---
 
 # {safe_title} 专属实验报告 Skill
@@ -774,24 +780,26 @@ description: |
 
 - 先读取 `references/subject-contract.md`、`references/skill-quality-contract.md` 和 `references/quality-profile.json`，再开始本次任务。
 - 生成质量优先于无条件自动定位：重点检查任务覆盖、事实来源、写作画像、风格差异、证据缺失和用户可调入口。
-- 每份报告使用 `variation_seed`，允许用户临时调整写作水平、详略、反思取向和语气；临时调整不自动更新 Skill。
+- 每份报告使用 8 维画像和 `report-variation-contract`，从章节重点、解释顺序、例证密度和反思角度产生可解释差异；不得靠随机同义词替换。
 - 交付前必须执行质量自检和质量合同中的门禁；无法证明的内容留占位或请求用户补充，不用模板相似度掩盖内容质量问题。
 
 ## 最高优先级规则
 
-- 所有新任务使用 v2；v1 `fill-map.json` 只允许迁移后重新定位。
-- 先创建持久化会话、确认 requirements-summary、解析 OOXML inventory、解决定位，再生成 content-package 和草稿。
+- 所有新任务默认调用 `lab_factory_v2_prepare_autopilot`；v1 `fill-map.json` 只允许迁移后重新定位。
+- 严格执行 interaction plan 的 `next_action`；正常任务只有 preflight 和最终 DOCX 两个常规确认点。
+- 底层仍使用 OOXML inventory、template-profile 和 content-package 保证确定性写回。
 - 关键产物是 `requirements-summary.json`、`template-profile.json`、`content-package.json`；每份报告沿用会话 `variation_seed`，低置信度定位必须用户确认。
 - 第一次默认只填补，不删除、不改写、不重排原文；只有完整阅读材料、生成 `section-plan.json` 并得到用户明确确认后，才允许在模板副本中受控新增二级/三级标题。除此之外不得改变原结构、字体、字号、内容、格式和排版。
 - 当前实验编号只能作为样例，不要把它当成唯一适配范围，除非本 skill 明确是实验级。
-- 生成 `fill.md` 前必须先从头到尾完整阅读实验报告、任务书和文末提交说明，充分理解后复述任务要求，并等待用户确认；然后再根据模板多轮确认写作规范、内容粒度、实验小结结构、必用工具、运行环境、源码/Notebook、截图来源、提交清单和 finalize 边界。
+- 生成前必须从头到尾完整阅读材料、复述任务要求并形成结构化需求摘要；把要求、8 维偏好、格式具体值及来源合并到 preflight 一次展示，只对缺失、冲突和风险例外追加提问。
+- 用户临时调整只作用于当前报告，最终通过 Skill 学习摘要决定是否沉淀。
 - 用户选择默认时，必须把 `references/default-writing-parameters.md` 的默认值当成本次用户要求执行，并在 `fill.md` 中展开列出。
-- 每个阶段都要请用户检查并鼓励修正：`请查看，是否存在什么问题？有哪些需要修改的地方？`
+- 不要机械地逐阶段请用户检查；`balanced` 模式下低风险步骤自动推进，结构修改、低置信度定位和硬门禁按需暂停。
 - 复制原文件必须是字节级副本；新增内容继承目标锚点样式，不能整篇重建 DOCX。
 - DOCX 默认使用 `python-docx + lxml` 做副本内最小范围填补；`docxtpl` 只用于受控占位符模板，`Mammoth` 只用于辅助抽取，`pywin32 COM` 只作为 Windows + Word 可选增强。
 - 截图和绘图只能来自真实运行、用户材料或可复现代码输出；缺失时只留占位和操作提示，不使用生图伪造截图。
 - 参考案例只生成 style card，不保存或复制正文；Finalize 前必须通过严格相似性门禁。
-- 草稿输出后必须让用户在 WPS 或实际编辑器中检查位置、表格、分页和图片，并记录 review_id 与反馈；有问题先修正。
+- 草稿安全写回后自动进入最终 DOCX 验收，并提醒用户在 WPS 或实际编辑器中检查位置、表格、分页和图片；有问题回到内容阶段。
 - Finalize 前必须确认删除项、封面信息和文件命名方式，并在最终版末尾添加免责声明。
 - 最终稿后提供继续修改、审阅并更新 Skill、完成但不更新三个出口。
 - 不保存姓名、学号、账号、完整报告正文、原始数据、参考样本正文或截图到 skill。
@@ -815,19 +823,17 @@ description: |
 
 1. 读取并从头到尾完整浏览用户材料，包括模板、任务书、评分标准和文末提交说明。
 2. 复述任务要求：实验目标、任务步骤、填写范围、不可触碰区域、工具环境、源码/Notebook、截图来源、提交清单、命名规则和缺失材料。
-3. 等待用户确认理解无误；如果用户指出误解，先修正复述。
-4. 结合模板和任务书生成“已识别要求 + 来源 + 缺失/冲突项”，只对缺失或冲突项提问；模板已有明确规定不重复提问。需求确认和用户微调面板尽量合并，每轮最多 1–3 个强相关问题；用户选择默认时展开 `references/default-writing-parameters.md` 的具体默认值，并把它们当成本次用户要求。
-5. 创建 v2 会话，生成并确认 `requirements-summary.json`；记录每项规则的来源。首次课程配置的关键确认尽量不超过 5 轮，后续同模板实验尽量不超过 2 轮。
-6. 如果用户没有提出写作偏好，直接采用已确认的课程画像和默认参数，不为了形式再增加一轮提问。
+3. 生成 `requirements-summary.json` 和 `template-profile.json`，调用 `lab_factory_v2_prepare_autopilot`。
+4. 首次收集 8 项稳定偏好；复用画像时不重复提问。偏好冲突或置信度低时才按需展示两个短样例校准。
+5. 展示 preflight：任务要求、偏好、变化契约、格式具体值及其 user/task/template/default 来源；确认后获取 token 并推进。
+6. 如果模板和任务已明确，直接采用已识别值和展开后的默认参数，不为了形式增加提问。
 7. 生成 OOXML inventory 和标题树，把材料需要的章节与模板已有二/三级标题比较。标题不足时生成 `section-plan.json`，一次性展示“复用/新增”的结构差异；只有用户明确确认后才调用标题扩展工具生成模板副本，并对副本重新 inventory。无需扩展时跳过，不增加确认轮次。
 8. 首次确认节点并编译 `template-profile.json`，后续复用并处理 confirm/blocked 候选。
 9. 读取课程 `writing-profile.json` 和可选 `style-card.json`，沿用会话 `variation_seed` 生成 `content-package.json`；正文和小结字段必须把已确认的字数范围写入每个 item 的 `quality`，由引擎在写入前强制校验；标题、编号等短字段可不设字数门禁。事实、格式和真实证据不得被风格变化覆盖。
-10. 状态到达 `content_ready` 后调用 v2 安全写入工具生成草稿，并生成质量自检摘要。
-11. 输出草稿后，让用户在 WPS 检查位置、标题树、编号、目录、表格、分页和图片，并记录 `review_id` 与反馈；用户可以直接指出段落要更详细、简短或换角度。
-12. 用户指出问题时回到内容阶段；用户批准后才能 Finalize。缺失截图、数据或源码时暂停，不编造。
-13. Finalize 前执行参考样本相似性门禁和质量合同自检；失败时标出原因并重写或请用户决定，不得绕过。
-14. 通过后整理终稿、确认文件命名和免责声明。
-15. 提供继续修改、审阅更新 diff 后更新 Skill、完成但不更新三个出口；临时报告反馈不自动升级为 Skill 规则。
+10. 自动推进高置信度定位、内容质量检查和安全写回；结构变化、confirm/blocked 定位或硬门禁才暂停。
+11. 安全写回后直接展示最终 DOCX、假设、警告与 WPS 检查清单，作为第二个常规确认点。
+12. 用户要求修改时沿用同一 variation seed 回到内容阶段；缺失截图、数据或源码时暂停，不编造。
+13. 最终验收后展示 Skill 学习摘要；只有用户明确接受 diff 才沉淀稳定偏好，报告正文不进入 Skill。
 """
 
     write_file(skill_dir / "SKILL.md", skill_md)

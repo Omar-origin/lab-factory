@@ -84,6 +84,7 @@ def run_beta_tests(_: argparse.Namespace) -> int:
     scripts = [
         script_root / "scripts" / "run_beta_smoke_tests.py",
         script_root / "scripts" / "run_v2_tests.py",
+        script_root / "scripts" / "run_autopilot_tests.py",
     ]
     missing = [str(script) for script in scripts if not script.exists()]
     if missing:
@@ -214,12 +215,26 @@ def main() -> int:
     sub.add_parser("check-runtime", help="Check bundled/runtime Python dependencies.")
     sub.add_parser("mcp-smoke", help="Run a local MCP stdio handshake smoke test.")
 
-    activate = sub.add_parser("activate", help="Activate with a beta activation code.")
-    activate.add_argument("activation_code")
-    activate.add_argument("--customer-id")
-    activate.add_argument("--auth-url")
-    activate.add_argument("--product-id")
-    activate.add_argument("--license-file")
+    request_license = sub.add_parser("license-request", help="Create a device request to send to the seller.")
+    request_license.add_argument("--output", required=True)
+    activate = sub.add_parser("activate", help="Import a seller-signed offline .lflicense file.")
+    activate.add_argument("license_file")
+    activate.add_argument("--accept-terms-version", required=True)
+    activate.add_argument("--confirm-age-18", action="store_true", required=True)
+
+    sub.add_parser("deactivate", help="Deactivate this installation.")
+    telemetry = sub.add_parser("telemetry", help="Enable, disable, or inspect anonymous usage data collection.")
+    telemetry.add_argument("action", choices=["enable", "disable", "status", "clear"])
+    feedback = sub.add_parser("feedback", help="Record one structured draft review locally.")
+    feedback.add_argument("review_id")
+    feedback.add_argument("--rating", type=int, choices=range(1, 6), required=True)
+    feedback.add_argument("--edit-time", choices=["under_15m", "15_30m", "30_60m", "over_60m"], required=True)
+    feedback.add_argument("--issue", action="append", default=[])
+    feedback_export = sub.add_parser("feedback-export", help="Export local diagnostics for manual sending.")
+    feedback_export.add_argument("--output", required=True)
+    verify_update = sub.add_parser("verify-update", help="Verify a manually received update file.")
+    verify_update.add_argument("path")
+    verify_update.add_argument("--sha256", required=True)
 
     export_config = sub.add_parser("export-config", help="Export MCP client config.")
     export_config.add_argument("--client", choices=["claude_code", "codex", "generic_stdio"], default="generic_stdio")
@@ -229,12 +244,12 @@ def main() -> int:
     install.add_argument("--binary")
     install.add_argument("--skill-root")
     install.add_argument("--workspace-root")
-    install.add_argument("--license-db", default=str(server.DEFAULT_LICENSE_DB))
-    install.add_argument("--auth-url")
-    install.add_argument("--product-id", default="lab-skill-factory-beta")
+    install.add_argument("--product-id", default="lab-factory-1")
+    install.add_argument("--purchase-url", required=True)
+    install.add_argument("--support-email", required=True)
+    install.add_argument("--feedback-email")
     install.add_argument("--codex-config", default=str(installer.DEFAULT_CODEX_CONFIG))
     install.add_argument("--claude-scope", choices=["local", "user", "project"], default="user")
-    install.add_argument("--dev-allow", action="store_true", help="Enable free beta access without an activation server.")
     install.add_argument("--dry-run", action="store_true")
 
     inspect = sub.add_parser("inspect", help="Inspect lab materials and infer roles.")
@@ -334,17 +349,26 @@ def main() -> int:
         return call_tool(server.tool_check_runtime, {})
     if args.command == "mcp-smoke":
         return run_mcp_smoke(args)
+    if args.command == "license-request":
+        return call_tool(server.tool_create_license_request, {"output_path": args.output})
     if args.command == "activate":
-        if args.auth_url:
-            os.environ["LAB_FACTORY_AUTH_URL"] = args.auth_url.rstrip("/")
-        if args.product_id:
-            os.environ["LAB_FACTORY_PRODUCT_ID"] = args.product_id
-        if args.license_file:
-            os.environ["LAB_FACTORY_LICENSE_FILE"] = str(Path(args.license_file).expanduser().resolve())
         return call_tool(
             server.tool_activate,
-            {"activation_code": args.activation_code, "customer_id": args.customer_id},
+            {"license_path": args.license_file, "adult_confirmed": args.confirm_age_18, "terms_version": args.accept_terms_version},
         )
+    if args.command == "deactivate":
+        return call_tool(server.tool_deactivate, {})
+    if args.command == "telemetry":
+        return call_tool(server.tool_telemetry_settings, {"action": args.action})
+    if args.command == "feedback":
+        return call_tool(server.tool_submit_draft_feedback, {
+            "review_id": args.review_id, "rating": args.rating,
+            "edit_time_bucket": args.edit_time, "issue_categories": args.issue,
+        })
+    if args.command == "feedback-export":
+        return call_tool(server.tool_export_feedback, {"output_path": args.output})
+    if args.command == "verify-update":
+        return call_tool(server.tool_verify_update, {"path": args.path, "sha256": args.sha256})
     if args.command == "export-config":
         return call_tool(server.tool_export_client_config, {"client": args.client})
     if args.command == "install":

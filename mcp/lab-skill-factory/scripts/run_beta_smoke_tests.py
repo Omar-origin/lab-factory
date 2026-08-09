@@ -127,7 +127,9 @@ def run_sample(sample: dict, workspace: Path) -> dict:
     )
 
     if getattr(sys, "frozen", False):
-        command = [sys.executable, "apply-fill-map", str(fill_map), "--output", str(output)]
+        # The built-in test command operates only on synthetic temporary files;
+        # execute the bundled helper directly so testing does not require a paid license.
+        command = [sys.executable, "--run-skill-script", str(APPLY), str(fill_map), "--output", str(output)]
     else:
         command = [sys.executable, str(APPLY), str(fill_map), "--output", str(output)]
     proc = subprocess.run(

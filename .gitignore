@@ -24,6 +24,10 @@ venv/
 # Lab Factory local secrets and packaged artifacts
 mcp/lab-skill-factory/activation_codes.json
 mcp/lab-skill-factory/*.license.json
+*.lfreq
+*.lflicense
+issuer-private.json
+license-ledger.jsonl
 mcp/lab-skill-factory/vendor/
 mcp/lab-skill-factory/dist/
 mcp/lab-skill-factory/build/pyinstaller-work/

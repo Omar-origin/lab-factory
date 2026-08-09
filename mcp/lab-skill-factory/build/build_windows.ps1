@@ -27,11 +27,14 @@ pyinstaller `
   --specpath (Join-Path $McpDir "build") `
   --hidden-import docx `
   --hidden-import lxml `
+  --hidden-import cryptography `
+  --hidden-import keyring.backends.Windows `
   --collect-data docx `
   --add-data "$RootDir\skills\lab-skill-factory;skills\lab-skill-factory" `
   --add-data "$McpDir\scripts;scripts" `
   --add-data "$McpDir\evals;evals" `
   --add-data "$McpDir\install.py;." `
+  --add-data "$McpDir\license_public_key.json;." `
   "$McpDir\cli.py"
 
 Write-Host "Built: $(Join-Path $DistDir ($AppName + '.exe'))"

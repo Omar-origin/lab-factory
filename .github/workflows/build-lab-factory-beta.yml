@@ -32,8 +32,23 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install runtime dependencies
+        run: python -m pip install -r mcp/lab-skill-factory/runtime-requirements.txt
+
+      - name: Test v1 fill-map regression suite
+        run: python mcp/lab-skill-factory/scripts/run_beta_smoke_tests.py
+
+      - name: Test v2 deterministic engine
+        run: python mcp/lab-skill-factory/scripts/run_v2_tests.py
+
+      - name: Test v2.1 report autopilot
+        run: python mcp/lab-skill-factory/scripts/run_autopilot_tests.py
+
       - name: Test installer and activation
         run: python mcp/lab-skill-factory/scripts/test_install_and_activation.py
+
+      - name: Test commercial flow
+        run: python mcp/lab-skill-factory/scripts/test_commercial_flow.py
 
       - name: Build macOS binary
         if: runner.os == 'macOS'
@@ -52,12 +67,10 @@ jobs:
       - name: Build Windows installer
         if: runner.os == 'Windows'
         shell: pwsh
-        run: .\mcp\lab-skill-factory\build\build_windows_installer.ps1 -SkipBinaryBuild -Version "0.1.0-beta.${{ github.run_number }}"
+        run: .\mcp\lab-skill-factory\build\build_windows_installer.ps1 -SkipBinaryBuild -Version "1.0.0-beta.${{ github.run_number }}"
 
       - name: Smoke test macOS binary
         if: runner.os == 'macOS'
-        env:
-          LAB_FACTORY_DEV_ALLOW: "1"
         run: |
           ./mcp/lab-skill-factory/dist/macos/lab-factory status
           ./mcp/lab-skill-factory/dist/macos/lab-factory check-runtime
@@ -65,7 +78,7 @@ jobs:
           python3 mcp/lab-skill-factory/scripts/smoke_mcp_stdio.py ./mcp/lab-skill-factory/dist/macos/lab-factory serve-mcp
           install_test_dir="$(mktemp -d)"
           install_config="$install_test_dir/codex-config.toml"
-          ./mcp/lab-skill-factory/dist/macos/lab-factory install --target codex --binary "$(pwd)/mcp/lab-skill-factory/dist/macos/lab-factory" --codex-config "$install_config"
+          ./mcp/lab-skill-factory/dist/macos/lab-factory install --target codex --binary "$(pwd)/mcp/lab-skill-factory/dist/macos/lab-factory" --codex-config "$install_config" --purchase-url https://example.test/purchase --support-email support@example.test --feedback-email feedback@example.test
           grep -q "\[mcp_servers.lab-skill-factory\]" "$install_config"
           grep -q "LAB_FACTORY_PRODUCT_ID" "$install_config"
           if grep -q "_MEI" "$install_config"; then
@@ -77,8 +90,6 @@ jobs:
       - name: Smoke test Windows binary
         if: runner.os == 'Windows'
         shell: pwsh
-        env:
-          LAB_FACTORY_DEV_ALLOW: "1"
         run: |
           .\mcp\lab-skill-factory\dist\windows\lab-factory.exe status
           .\mcp\lab-skill-factory\dist\windows\lab-factory.exe check-runtime
@@ -86,7 +97,7 @@ jobs:
           python .\mcp\lab-skill-factory\scripts\smoke_mcp_stdio.py .\mcp\lab-skill-factory\dist\windows\lab-factory.exe serve-mcp
           $binaryPath = (Resolve-Path .\mcp\lab-skill-factory\dist\windows\lab-factory.exe).Path
           $codexConfig = Join-Path $env:RUNNER_TEMP "lab-factory-codex-config.toml"
-          .\mcp\lab-skill-factory\dist\windows\lab-factory.exe install --target codex --binary $binaryPath --codex-config $codexConfig
+          .\mcp\lab-skill-factory\dist\windows\lab-factory.exe install --target codex --binary $binaryPath --codex-config $codexConfig --purchase-url https://example.test/purchase --support-email support@example.test --feedback-email feedback@example.test
           if (-not (Select-String -Path $codexConfig -Pattern "\[mcp_servers\.lab-skill-factory\]" -Quiet)) {
             Get-Content $codexConfig
             throw "Codex MCP section was not written"
@@ -103,8 +114,6 @@ jobs:
       - name: Smoke test Windows installer
         if: runner.os == 'Windows'
         shell: pwsh
-        env:
-          LAB_FACTORY_DEV_ALLOW: "1"
         run: |
           $installer = Get-ChildItem .\mcp\lab-skill-factory\dist\windows\installer\*.exe | Select-Object -First 1
           $installDir = Join-Path $env:RUNNER_TEMP "lab-factory-install"
@@ -140,7 +149,7 @@ jobs:
           & $installedExe mcp-smoke
           python .\mcp\lab-skill-factory\scripts\smoke_mcp_stdio.py $installedExe serve-mcp
           $installedCodexConfig = Join-Path $env:RUNNER_TEMP "lab-factory-installed-codex-config.toml"
-          & $installedExe install --target codex --binary $installedExe --codex-config $installedCodexConfig
+          & $installedExe install --target codex --binary $installedExe --codex-config $installedCodexConfig --purchase-url https://example.test/purchase --support-email support@example.test --feedback-email feedback@example.test
           if (-not (Select-String -Path $installedCodexConfig -Pattern "\[mcp_servers\.lab-skill-factory\]" -Quiet)) {
             Get-Content $installedCodexConfig
             throw "Installed exe did not write Codex MCP section"

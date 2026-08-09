@@ -1,302 +1,82 @@
-# Lab Factory v2 免费测试版
+# Lab Factory MCP
 
-这是 `skills/lab-skill-factory` 的产品包装层。当前定位不是黑盒代写实验报告，而是：
+Lab Factory 1.x 是面向课程实验报告工作流的本地 MCP 工具。当前付费内测采用纯离线人工闭环，不需要服务器、域名、数据库或支付接口。
 
-- 一个 CLI 产品入口：`lab-factory`。
-- 一个标准 stdio MCP 接口：`lab-factory serve-mcp`。
-- 一套用户可见、可编辑、可迭代的专属科目 skill 生成流程。
+## v2.1 报告自动驾驶
 
-当前实现、验证范围、已知限制和下一阶段任务见 [PROJECT_STATUS.md](PROJECT_STATUS.md)。
+新报告以可用 DOCX 为产品入口：首次确认 8 维稳定偏好并完整披露模板/默认格式，之后自动推进低风险步骤，只在结构变化、低置信度定位、硬门禁和最终 DOCX 处暂停。专属 Skill 在报告完成后以学习摘要形式受控更新。
 
-如果你是 Claude Code、Codex 或其他 agent，用户让你“部署这个压缩包/安装包”时，先阅读根目录的 `INSTALL_FOR_AGENT.md`，再执行部署。不要在部署阶段开始写实验报告。
+主要 MCP 工具：
 
-v2 把产品收敛为“可靠模板编译器”：首次把课程 DOCX 编译成可审查的模板配置，后续只自动采用高置信度位置，对歧义位置询问用户，并通过持久化状态机强制草稿审阅和 Finalize 门禁。
+- `lab_factory_v2_prepare_autopilot`
+- `lab_factory_v2_answer_questions`
+- `lab_factory_v2_confirm_checkpoint`
+- `lab_factory_v2_advance_autopilot`
+- `lab_factory_v2_autopilot_status`
 
-## 当前能力
+默认使用 `balanced`，正常任务只有 preflight 和最终 DOCX 两个常规确认点。旧 v2.0 会话继续使用 strict 流程；`fast` 暂未开放。
 
-### v2 主流程
+## 当前商业闭环
 
-- OOXML inventory：解析正文、表格单元格、页眉页脚、样式、编号和图片关系，并标记文本框、公式、域、修订等不可自动写入对象。
-- 受控标题扩展：宿主 AI 完整阅读材料后比较 `heading_tree`，生成需要用户确认的 `section-plan.json`；确认后仅在副本中新增二级/三级标题，继承同级样式并校验父级、顺序和编号。
-- `template-profile.json`：保存稳定结构路径、表格坐标、上下文和样式来源。
-- 定位评分：`auto >= 0.90` 且领先第二候选 `>= 0.15`；`confirm` 必须用户选择；`blocked` 禁止写入。
-- 最小 OOXML 写回：只修改被审计的 DOCX part，非目标部件内容哈希保持不变。
-- 持久化状态机：需求、定位、内容、草稿审阅、Finalize 和 Skill 迭代均有前置门禁。
-- 课程写作画像、参考样本 style card、每报告 variation seed 和严格相似性门禁。
-- v1 fill-map 读取迁移；旧字符串锚点必须重新定位，不能直接升级为高置信度。
+- 用户通过微信/支付宝向你付款。
+- 用户运行 `license-request` 生成本机 `.lfreq` 文件并发给你。
+- 你在自己的设备上用 Ed25519 私钥签发 `.lflicense`，再发回用户。
+- 客户端只内置公钥，导入后永久离线验签；私钥永不进入发行包。
+- 授权绑定随机安装 ID，不读取用户名、机器名或硬件指纹。
+- 使用数据默认不记录；用户同意后仅在本机记录白名单字段，主动导出后自行发邮件。
+- 更新包由你人工发送，用户先核对 SHA-256，再按说明安装。
+- 草稿/终稿固定追加一次 AI 辅助生成声明，无法安全追加时阻止 Finalize。
 
-### v1 兼容能力
+离线方案的明确限制：已经发出的许可证无法远程吊销，也无法自动限制换绑频率。换机、退款例外和分销统计都通过本地签发台账人工处理。
 
-- `lab_factory_status`：查看激活状态和本地配置。
-- `lab_factory_activate`：输入免费测试版激活码。
-- `lab_factory_check_runtime`：检查 DOCX/MD 处理依赖。
-- `lab_factory_export_client_config`：导出 Claude Code、Codex 或通用 stdio MCP 配置。
-- `lab_factory_inspect_materials`：清点任务书、模板、参考案例、源码、截图和数据。
-- `lab_factory_extract_docx_outline`：抽取 DOCX 段落、表格、锚点和文末提交要求。
-- `lab_factory_validate_skill_spec`：校验定制前的 `skill-spec.md`。
-- `lab_factory_scaffold_subject_skill`：生成用户可编辑的专属科目/模板 skill。
-- `lab_factory_validate_scaffolded_skill`：校验生成后的专属 skill。
-- `lab_factory_validate_fill_map`：校验专属 skill 生成的 `fill-map.json`。
-- `lab_factory_apply_fill_map`：复制 DOCX/MD 原文件并按 fill-map 填入副本，源文件保持只读。
-- `lab_factory_get_factory_guidance`：返回流程、授权、兼容性和质量边界建议。
+## 首次初始化签发者
 
-## CLI 使用
-
-源码模式：
+只执行一次。私钥路径应放在仓库外，并做离线备份：
 
 ```bash
-python3 /Users/omar/Documents/New\ project/mcp/lab-skill-factory/cli.py status
-python3 /Users/omar/Documents/New\ project/mcp/lab-skill-factory/cli.py check-runtime
-python3 /Users/omar/Documents/New\ project/mcp/lab-skill-factory/cli.py serve-mcp
+python3 mcp/lab-skill-factory/auth/commercial_admin.py init-issuer \
+  --private-key ~/.lab-factory-issuer/issuer-private.json \
+  --public-key mcp/lab-skill-factory/license_public_key.json
 ```
 
-二进制模式：
+然后重新构建发行包，公钥会被打包进去。不要提交或发送私钥。
+
+## 每次签发
 
 ```bash
-/path/to/lab-factory status
-/path/to/lab-factory check-runtime
-/path/to/lab-factory mcp-smoke
-/path/to/lab-factory serve-mcp
+python3 mcp/lab-skill-factory/auth/commercial_admin.py issue-license \
+  --private-key ~/.lab-factory-issuer/issuer-private.json \
+  --request 用户设备.lfreq \
+  --output 用户设备.lflicense \
+  --channel-id campus-a \
+  --customer-ref order-001
 ```
 
-常用 CLI 子命令：
+默认台账保存在私钥同目录的 `license-ledger.jsonl`。只把 `.lflicense` 发给对应用户。
+
+## 用户使用
 
 ```bash
-lab-factory activate <activation-code>
-lab-factory mcp-smoke
-lab-factory inspect <材料路径...>
-lab-factory extract-docx <模板.docx>
-lab-factory validate-spec <skill-spec.md>
-lab-factory scaffold-skill <skill-spec.md> <输出目录>
-lab-factory validate-skill <专属skill目录>
-lab-factory validate-fill-map <fill-map.json>
-lab-factory apply-fill-map <fill-map.json> --output <草稿副本.docx>
-lab-factory inventory-v2 <模板.docx> --output <inventory.json>
-lab-factory create-profile-v2 <inventory.json> <template-profile.json> --subject <课程> --fields-json '<字段数组>'
-lab-factory propose-v2 <template-profile.json> <新模板.docx> --output <placement-plan.json>
-lab-factory section-plan-v2 <inventory.json> <section-plan.json> --proposal-json '<标题扩展提案>'
-lab-factory apply-section-plan-v2 <section-plan.json> <模板.docx> <扩展模板副本.docx> --confirmation '<用户确认摘要>'
-lab-factory apply-v2 <template-profile.json> <模板.docx> <content-package.json> <草稿.docx>
-lab-factory create-session-v2 <报告工作区> --subject <课程>
-lab-factory writing-profile-v2 <writing-profile.json> --subject <课程> --preset balanced
-lab-factory similarity-v2 <生成报告> <参考报告...>
-lab-factory migrate-v1 <fill-map.json> <migration-draft.json>
-lab-factory test
+lab-factory install --target both --purchase-url "微信联系销售者" \
+  --support-email support@example.com --feedback-email feedback@example.com
+lab-factory license-request --output device.lfreq
+lab-factory activate device.lflicense --accept-terms-version 1.0 --confirm-age-18
+lab-factory telemetry enable
+lab-factory feedback-export --output lab-factory-feedback.json
+lab-factory verify-update 新安装包 --sha256 <你公布的SHA-256>
 ```
 
-## MCP 接入
-
-MCP server 的启动方式统一为：
+## 开发与测试
 
 ```bash
-lab-factory serve-mcp
+python3 -m pip install -r mcp/lab-skill-factory/runtime-requirements.txt
+python3 mcp/lab-skill-factory/scripts/run_beta_smoke_tests.py
+python3 mcp/lab-skill-factory/scripts/run_v2_tests.py
+python3 mcp/lab-skill-factory/scripts/run_autopilot_tests.py
+python3 mcp/lab-skill-factory/scripts/test_install_and_activation.py
+python3 mcp/lab-skill-factory/scripts/test_commercial_flow.py
 ```
 
-源码模式配置示例：
+源码开发可临时设置 `LAB_FACTORY_DEV_ALLOW=1`；冻结发行包忽略该变量。
 
-```json
-{
-  "mcpServers": {
-    "lab-skill-factory": {
-      "command": "python3",
-      "args": [
-        "/Users/omar/Documents/New project/mcp/lab-skill-factory/cli.py",
-        "serve-mcp"
-      ],
-      "env": {
-        "LAB_FACTORY_SKILL_ROOT": "/Users/omar/Documents/New project/skills/lab-skill-factory",
-        "LAB_FACTORY_LICENSE_DB": "/Users/omar/Documents/New project/mcp/lab-skill-factory/activation_codes.json"
-      }
-    }
-  }
-}
-```
-
-二进制模式配置示例：
-
-```json
-{
-  "mcpServers": {
-    "lab-skill-factory": {
-      "command": "/path/to/lab-factory",
-      "args": ["serve-mcp"],
-      "env": {
-        "LAB_FACTORY_AUTH_URL": "https://your-domain.example",
-        "LAB_FACTORY_PRODUCT_ID": "lab-skill-factory-beta"
-      }
-    }
-  }
-}
-```
-
-配置示例文件在：
-
-- `client-configs/claude-code.example.json`
-- `client-configs/codex.example.toml`
-- `client-configs/generic-stdio.example.json`
-- `INSTALL_FOR_AGENT.md`：给 Claude Code/Codex 读取的最短部署入口。
-- `USER_GUIDE.md`：给普通测试用户看的部署、激活和使用说明。
-- `docs/AGENT_MCP_DEPLOYMENT.md`：给 Claude Code/Codex 这类 agent 读取的部署说明。
-- `docs/WINDOWS_MAC_USAGE.md`：给 Windows/macOS 测试用户读取的使用说明。
-- `docs/REMOTE_AUTH_DEPLOYMENT.md`：远程激活码服务的部署与商业化改造方案。
-
-也可以连接 MCP 后调用 `lab_factory_export_client_config`，传入 `claude_code`、`codex` 或 `generic_stdio`。
-
-## 安装脚本
-
-源码内测安装：
-
-```bash
-python3 /Users/omar/Documents/New\ project/mcp/lab-skill-factory/cli.py install --target both --dev-allow
-```
-
-二进制免费内测安装：
-
-```bash
-/path/to/lab-factory install --target both --dev-allow
-```
-
-远程激活模式安装：
-
-```bash
-/path/to/lab-factory install --target both \
-  --auth-url https://your-domain.example \
-  --product-id lab-skill-factory-beta
-```
-
-先查看将写入的配置：
-
-```bash
-/path/to/lab-factory install --target both --dry-run
-```
-
-`--target` 可以是 `claude`、`codex` 或 `both`。Claude Code 依赖本机 `claude` CLI；Codex 默认写入 `~/.codex/config.toml`，可用 `--codex-config` 指定路径。
-
-Claude Code 安装默认使用 `--claude-scope user`，让 MCP 对该用户的所有项目生效。需要只对当前项目生效时，可传入 `--claude-scope local`。为了兼容不同 Claude Code 版本，安装器会优先使用 `claude mcp add --scope user -e KEY=value -- lab-skill-factory <command> serve-mcp` 的格式；如果失败，会自动尝试几种旧格式，并在全部失败时输出可手动粘贴的 MCP 配置。
-
-## 用户可编辑专属 skill
-
-生成出来的专属 skill 建议可见、可编辑。它只保存课程级流程、模板结构、填写规则、默认格式、常见提问、finalize 边界和版本记录。
-
-不能写入专属 skill 的内容：
-
-- 姓名、学号、账号、密码、token。
-- 完整报告正文、原始数据、截图、私有源码。
-- 老师未公开材料或用户不希望沉淀的私人资料。
-
-这样产品形态就是：核心 CLI/MCP 尽量受保护，用户自己的课程规则层保持透明、可改、可迭代。
-
-## Python 依赖
-
-当前核心 MCP 只依赖 Python 标准库。DOCX 写回阶段推荐随产品打包：
-
-- 必带：`python-docx`、`lxml`。
-- 可选增强：`docxtpl`、`mammoth`、`pywin32`。
-
-默认策略仍然是 `python-docx + lxml`：先完整复制原文件，再尽量按锚点填补，不主动重排、不主动删原内容。唯一结构扩展入口是用户确认的 `section-plan.json`，当前只支持正文普通段落中的二级/三级标题。`docxtpl` 只适合受控占位符模板；`mammoth` 更适合只读抽取；`pywin32` 只适合 Windows + Microsoft Word 自动化增强。
-
-## 远程授权
-
-免费内测也建议走远程授权链路，方便后续升级为付费授权。
-
-启动测试服务：
-
-```bash
-LAB_AUTH_ADMIN_TOKEN="换成你的管理员token" \
-python3 /Users/omar/Documents/New\ project/mcp/lab-skill-factory/auth/remote_auth_service.py \
-  --host 127.0.0.1 \
-  --port 8765 \
-  --db /Users/omar/lab-auth.sqlite3
-```
-
-创建测试激活码：
-
-```bash
-curl -X POST https://your-domain.example/admin/create-code \
-  -H "Authorization: Bearer <admin-token>" \
-  -H "Content-Type: application/json" \
-  -d '{"activation_code":"BETA-001-随机码","label":"tester-001","max_devices":2}'
-```
-
-用户侧配置 `LAB_FACTORY_AUTH_URL` 后会优先走远程授权；没有配置时才使用本地 `activation_codes.json`。
-
-## 构建发行包
-
-macOS 构建：
-
-```bash
-bash /Users/omar/Documents/New\ project/mcp/lab-skill-factory/build/build_macos.sh
-```
-
-输出：
-
-```text
-mcp/lab-skill-factory/dist/macos/lab-factory
-```
-
-Windows 构建，在 Windows PowerShell 中运行：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\mcp\lab-skill-factory\build\build_windows.ps1
-```
-
-输出：
-
-```text
-mcp\lab-skill-factory\dist\windows\lab-factory.exe
-```
-
-Windows 安装包构建需要 Inno Setup 6：
-
-```powershell
-choco install innosetup -y
-powershell -ExecutionPolicy Bypass -File .\mcp\lab-skill-factory\build\build_windows_installer.ps1
-```
-
-输出：
-
-```text
-mcp\lab-skill-factory\dist\windows\installer\LabFactory-0.1.0-beta-Setup.exe
-```
-
-安装包是每用户安装，默认安装到 `%LOCALAPPDATA%\Programs\Lab Factory`，不需要管理员权限。安装器只安装 `lab-factory.exe`、README 和客户端配置示例，并创建开始菜单入口；不会自动修改 Claude Code 或 Codex 配置。用户安装后需要明确运行：
-
-```powershell
-& "$env:LOCALAPPDATA\Programs\Lab Factory\lab-factory.exe" install --target codex --dev-allow
-& "$env:LOCALAPPDATA\Programs\Lab Factory\lab-factory.exe" install --target claude --dev-allow
-```
-
-也可以直接从开始菜单打开 `Install Codex MCP Config (Free Beta)` 或 `Install Claude Code MCP Config (Free Beta)` 快捷方式。当前 beta 安装器不会自动修改用户 PATH。
-
-仓库内提供 GitHub Actions workflow：`.github/workflows/build-lab-factory-beta.yml`，会在 macOS runner 和 Windows runner 分别构建并上传 artifact。Windows artifact 会同时包含 `lab-factory.exe` 和 Inno Setup 安装包。
-
-macOS 和 Windows 不能共用同一个二进制；MCP 协议、CLI 子命令和 Python 代码是同一套，但发行包必须分别构建和测试。
-
-## 20 个样例测试
-
-源码模式：
-
-```bash
-python3 /Users/omar/Documents/New\ project/mcp/lab-skill-factory/cli.py test
-```
-
-二进制模式：
-
-```bash
-/path/to/lab-factory test
-```
-
-测试覆盖 20 个轻量样例：Markdown/DOCX、插入、占位替换、表格填补、截图占位、小结、工具环境和参考边界。通过条件包括输出文件存在、填补内容存在、源文件 hash 未变化。
-
-## 商业化边界
-
-当前是免费测试版，不等于商业级保护。正式商业化还需要：
-
-- macOS 代码签名、公证和安装包。
-- Windows Authenticode 签名、安装包和杀软误报处理。
-- HTTPS 远程授权服务、后台管理、设备解绑、撤销授权和日志审计。
-- 支付、订单、激活码发放、退款和客服流程。
-- 自动更新机制。
-- 更完整的 DOCX 复杂模板测试，尤其是页眉页脚、文本框、公式、域、嵌入对象和旧 `.doc`。
-- 隐私政策、用户协议、免责声明和课程合规边界说明。
-- Windows 真机测试，因为 macOS 构建出的二进制不能代表 Windows 行为。
+详细说明见 [离线授权与人工商业闭环](docs/OFFLINE_LICENSING.md)、[用户指南](USER_GUIDE.md) 和 [跨平台说明](docs/WINDOWS_MAC_USAGE.md)。

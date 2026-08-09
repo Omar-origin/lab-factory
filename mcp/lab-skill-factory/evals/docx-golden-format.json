@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "case": "minimal-format-preserving-writeback",
+  "expected": {
+    "changed_parts": [
+      "word/document.xml"
+    ],
+    "replacement_text": "已替换正文",
+    "replacement_color": "000000",
+    "inserted_text": "第一条正文",
+    "inserted_size_half_points": "24",
+    "inserted_numbering": false,
+    "remaining_cue_reason": "xxx_placeholder"
+  }
+}

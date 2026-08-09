@@ -35,6 +35,12 @@ NS = {
     "wps": "http://schemas.microsoft.com/office/word/2010/wordprocessingShape",
     "mc": "http://schemas.openxmlformats.org/markup-compatibility/2006",
 }
+DISCLAIMER_TEXT = (
+    "AI 辅助生成声明：本文档由 Lab Factory 辅助生成，仅供学习与实验报告草稿参考。"
+    "本工具不以实施学术欺诈为目的，不生成或认可伪造的实验数据、截图、运行结果或完成事实。"
+    "使用者应核验全部内容、补充真实证据，并遵守所在学校、课程和教师关于 AI 使用及学术诚信的规定。"
+    "最终提交与使用责任由使用者承担。"
+)
 W = f"{{{NS['w']}}}"
 XML_SPACE = "{http://www.w3.org/XML/1998/namespace}space"
 PROFILE_VERSION = "2.0"
@@ -73,6 +79,57 @@ def file_sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def ensure_docx_disclaimer(path: Path) -> dict[str, Any]:
+    """Append the fixed disclosure once, without changing any source document."""
+    fd, temporary_name = tempfile.mkstemp(prefix=".lab-factory-disclaimer-", suffix=".docx", dir=str(path.parent))
+    os.close(fd)
+    temporary = Path(temporary_name)
+    try:
+        with zipfile.ZipFile(path) as source, zipfile.ZipFile(temporary, "w") as destination:
+            for info in source.infolist():
+                raw = source.read(info.filename)
+                if info.filename == "word/document.xml":
+                    root = etree.fromstring(raw)
+                    body_matches = root.xpath("/w:document/w:body", namespaces=NS)
+                    if len(body_matches) != 1:
+                        raise V2Error("DOCX has no unique word/document.xml body; disclaimer cannot be appended safely")
+                    body = body_matches[0]
+                    matches = [
+                        paragraph for paragraph in body.xpath(".//w:p", namespaces=NS)
+                        if element_text(paragraph) == DISCLAIMER_TEXT
+                    ]
+                    for duplicate in matches[1:]:
+                        parent = duplicate.getparent()
+                        if parent is not None:
+                            parent.remove(duplicate)
+                    if not matches:
+                        paragraph = etree.Element(W + "p")
+                        run = etree.SubElement(paragraph, W + "r")
+                        text_node = etree.SubElement(run, W + "t")
+                        text_node.set(XML_SPACE, "preserve")
+                        text_node.text = DISCLAIMER_TEXT
+                        section_properties = body.find(W + "sectPr")
+                        if section_properties is None:
+                            body.append(paragraph)
+                        else:
+                            body.insert(body.index(section_properties), paragraph)
+                    raw = etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+                destination.writestr(info, raw)
+        os.replace(temporary, path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+    with zipfile.ZipFile(path) as package:
+        root = etree.fromstring(package.read("word/document.xml"))
+    count = sum(
+        1 for paragraph in root.xpath("/w:document/w:body//w:p", namespaces=NS)
+        if element_text(paragraph) == DISCLAIMER_TEXT
+    )
+    if count != 1:
+        raise V2Error(f"Disclaimer verification failed: expected 1 paragraph, found {count}")
+    return {"ok": True, "document": str(path), "disclaimer_count": count}
 
 
 def normalize_text(value: str) -> str:
@@ -1118,9 +1175,11 @@ def apply_section_plan(
         missing = [item["display_text"] for item in plan["sections"] if item["display_text"] not in temporary_texts]
         if missing:
             raise V2Error(f"Inserted headings failed post-write verification: {missing}")
+        ensure_docx_disclaimer(temporary)
         after_entries = zip_entry_hashes(temporary)
         changed_parts = sorted(name for name in before_entries if before_entries[name] != after_entries.get(name))
-        unexpected = sorted(set(changed_parts) - set(by_part))
+        expected_parts = set(by_part) | {"word/document.xml"}
+        unexpected = sorted(set(changed_parts) - expected_parts)
         if unexpected:
             raise V2Error(f"Unexpected DOCX package parts changed: {unexpected}")
         os.replace(temporary, output)
@@ -1136,8 +1195,8 @@ def apply_section_plan(
         "source_sha256": source_hash,
         "output_document": str(output),
         "output_sha256": file_sha256(output),
-        "changed_parts": sorted(by_part),
-        "untouched_part_count": len(before_entries) - len(by_part),
+        "changed_parts": changed_parts,
+        "untouched_part_count": len(before_entries) - len(changed_parts),
         "user_confirmation_summary": user_confirmation_summary.strip(),
         "audit": audit,
         "heading_tree": output_inventory["heading_tree"],
@@ -1381,9 +1440,10 @@ def apply_v2(
                 destination.writestr(info, raw)
         if file_sha256(target) != source_hash:
             raise V2Error("Source document changed during writeback")
+        ensure_docx_disclaimer(temporary)
         after_entries = zip_entry_hashes(temporary)
         changed_parts = sorted(name for name in before_entries if before_entries[name] != after_entries.get(name))
-        expected_parts = sorted(part_changes)
+        expected_parts = sorted(set(part_changes) | {"word/document.xml"})
         unexpected = sorted(set(changed_parts) - set(expected_parts))
         if unexpected:
             raise V2Error(f"Unexpected DOCX package parts changed: {unexpected}")
@@ -1408,8 +1468,8 @@ def apply_v2(
         "source_sha256": source_hash,
         "output_document": str(output),
         "output_sha256": file_sha256(output),
-        "changed_parts": sorted(part_changes),
-        "untouched_part_count": len(before_entries) - len(part_changes),
+        "changed_parts": changed_parts,
+        "untouched_part_count": len(before_entries) - len(changed_parts),
         "audit": audit,
         "remaining_template_cues": unresolved_cues,
         "wps_review_required": True,
@@ -1842,6 +1902,9 @@ def main() -> int:
     apply_parser.add_argument("--output", required=True)
     apply_parser.add_argument("--overwrite", action="store_true")
 
+    disclaimer_parser = sub.add_parser("ensure-disclaimer")
+    disclaimer_parser.add_argument("docx")
+
     create_session_parser = sub.add_parser("create-session")
     create_session_parser.add_argument("workspace")
     create_session_parser.add_argument("--subject", required=True)
@@ -1938,6 +2001,8 @@ def main() -> int:
                 load_json(Path(args.profile)), Path(args.docx).resolve(), load_json(Path(args.content)),
                 Path(args.output).resolve(), args.overwrite,
             )
+        elif args.command == "ensure-disclaimer":
+            result = ensure_docx_disclaimer(Path(args.docx).expanduser().resolve())
         elif args.command == "create-session":
             result = create_session(Path(args.workspace).resolve(), args.subject, args.report_id)
         elif args.command == "session-status":

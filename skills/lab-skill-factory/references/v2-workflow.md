@@ -1,5 +1,24 @@
 # Lab Factory v2 Workflow
 
+## 0. 默认使用 v2.1 报告自动驾驶
+
+新报告默认走结果优先流程；旧 v2.0 会话继续按下方 strict 流程恢复。
+
+1. 准备 `requirements-summary` 和 `template-profile`，调用 `lab_factory_v2_prepare_autopilot`。
+2. 严格执行返回的 `next_action`：
+   - `ask_user`：一次展示当前强相关问题；首次最多包含 8 项稳定偏好。
+   - `deliver_preview`：展示 preflight 或最终 DOCX 摘要。
+   - `await_host_artifact`：宿主生成或读取所需结构化产物，不询问用户。
+   - `auto_advance`：继续调用 `lab_factory_v2_advance_autopilot`。
+   - `blocked`：展示具体安全门禁，不得绕过。
+   - `done`：结束会话。
+3. preflight 必须展示 8 维偏好、变化契约、格式具体值及其来源。使用 `lab_factory_v2_confirm_checkpoint` 获取一次性 token，再调用 `lab_factory_v2_advance_autopilot`。
+4. 高置信度定位和低风险写入自动推进；只有结构变化、定位分数低于自动阈值、格式冲突或硬门禁失败时额外提问。
+5. 正常 `balanced` 流程的第二个、也是最后一个常规确认点是最终 DOCX。确认后展示 Skill 学习摘要，报告正文不得写入画像或 Skill。
+6. `fast` 目前只保留接口并返回 `MODE_NOT_ENABLED`；`strict` 映射下方旧流程。
+
+以下章节是 strict 模式和旧会话的兼容流程。
+
 ## 1. 建立会话与确认需求
 
 1. 调用 `lab_factory_v2_create_session`。

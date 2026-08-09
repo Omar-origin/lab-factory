@@ -2,7 +2,7 @@ param(
   [string]$RootDir = "",
   [string]$DistDir = "",
   [string]$AppName = "lab-factory",
-  [string]$Version = "0.1.0-beta",
+  [string]$Version = "1.0.0-beta.1",
   [string]$Publisher = "Lab Factory",
   [switch]$SkipBinaryBuild
 )

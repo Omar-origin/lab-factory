@@ -17,10 +17,13 @@ from typing import Any
 SERVER_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SERVER_DIR.parents[1]
 DEFAULT_SKILL_ROOT = REPO_ROOT / "skills" / "lab-skill-factory"
-DEFAULT_LICENSE_DB = SERVER_DIR / "activation_codes.json"
 DEFAULT_CODEX_CONFIG = Path.home() / ".codex" / "config.toml"
 DEFAULT_CLAUDE_CONFIG = Path.home() / ".claude.json"
 SERVER_NAME = "lab-skill-factory"
+DEPRECATED_AUTH_ENV = {
+    "LAB_FACTORY_DEV_ALLOW", "LAB_FACTORY_LICENSE_DB", "LAB_FACTORY_LICENSE_FILE",
+    "LAB_FACTORY_AUTH_URL", "LAB_FACTORY_LEASE_PUBLIC_KEY",
+}
 
 
 def server_command(binary: str | None) -> tuple[str, list[str]]:
@@ -35,14 +38,11 @@ def env_map(args: argparse.Namespace) -> dict[str, str]:
         env["LAB_FACTORY_SKILL_ROOT"] = str(Path(args.skill_root).expanduser().resolve())
     if getattr(args, "workspace_root", None):
         env["LAB_FACTORY_WORKSPACE_ROOT"] = str(Path(args.workspace_root).expanduser().resolve())
-    if args.auth_url:
-        env["LAB_FACTORY_AUTH_URL"] = args.auth_url.rstrip("/")
-    else:
-        env["LAB_FACTORY_LICENSE_DB"] = str(Path(args.license_db).expanduser().resolve())
     if args.product_id:
         env["LAB_FACTORY_PRODUCT_ID"] = args.product_id
-    if getattr(args, "dev_allow", False) or os.environ.get("LAB_FACTORY_DEV_ALLOW") == "1":
-        env["LAB_FACTORY_DEV_ALLOW"] = "1"
+    env["LAB_FACTORY_PURCHASE_URL"] = args.purchase_url
+    env["LAB_FACTORY_SUPPORT_EMAIL"] = args.support_email
+    env["LAB_FACTORY_FEEDBACK_EMAIL"] = args.feedback_email or args.support_email
     return env
 
 
@@ -110,11 +110,17 @@ def read_claude_env(scope: str, *, cwd: Path | None = None, home: Path | None = 
 
 def effective_codex_env(args: argparse.Namespace, requested: dict[str, str]) -> dict[str, str]:
     config_path = Path(args.codex_config or DEFAULT_CODEX_CONFIG).expanduser()
-    return merge_env(read_codex_env(config_path), requested)
+    existing = read_codex_env(config_path)
+    for key in DEPRECATED_AUTH_ENV:
+        existing.pop(key, None)
+    return merge_env(existing, requested)
 
 
 def effective_claude_env(args: argparse.Namespace, requested: dict[str, str]) -> dict[str, str]:
-    return merge_env(read_claude_env(args.claude_scope), requested)
+    existing = read_claude_env(args.claude_scope)
+    for key in DEPRECATED_AUTH_ENV:
+        existing.pop(key, None)
+    return merge_env(existing, requested)
 
 
 def codex_config_snippet(command: str, command_args: list[str], env: dict[str, str]) -> str:
@@ -285,12 +291,12 @@ def main() -> int:
     parser.add_argument("--binary", help="Path to packaged lab-factory binary. Defaults to python cli.py serve-mcp.")
     parser.add_argument("--skill-root", default=str(DEFAULT_SKILL_ROOT))
     parser.add_argument("--workspace-root", default=str(REPO_ROOT))
-    parser.add_argument("--license-db", default=str(DEFAULT_LICENSE_DB))
-    parser.add_argument("--auth-url", help="Remote activation service URL. If set, local license DB is not used.")
-    parser.add_argument("--product-id", default="lab-skill-factory-beta")
+    parser.add_argument("--product-id", default="lab-factory-1")
+    parser.add_argument("--purchase-url", required=True)
+    parser.add_argument("--support-email", required=True)
+    parser.add_argument("--feedback-email")
     parser.add_argument("--codex-config", default=str(DEFAULT_CODEX_CONFIG))
     parser.add_argument("--claude-scope", choices=["local", "user", "project"], default="user")
-    parser.add_argument("--dev-allow", action="store_true", help="Enable free beta access without an activation server.")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 

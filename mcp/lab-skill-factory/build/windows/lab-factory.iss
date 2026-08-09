@@ -1,6 +1,6 @@
 #define AppDisplayName "Lab Factory"
 #ifndef AppVersion
-#define AppVersion "0.1.0-beta"
+#define AppVersion "1.0.0-beta.1"
 #endif
 #ifndef AppPublisher
 #define AppPublisher "Lab Factory"
@@ -50,8 +50,6 @@ Source: "{#McpDir}\docs\*"; DestDir: "{app}\docs"; Flags: ignoreversion recurses
 
 [Icons]
 Name: "{group}\Lab Factory CLI"; Filename: "{cmd}"; Parameters: "/K ""{app}\lab-factory.exe"" status"; WorkingDir: "{app}"
-Name: "{group}\Install Codex MCP Config (Free Beta)"; Filename: "{cmd}"; Parameters: "/K ""{app}\lab-factory.exe"" install --target codex --dev-allow"; WorkingDir: "{app}"
-Name: "{group}\Install Claude Code MCP Config (Free Beta)"; Filename: "{cmd}"; Parameters: "/K ""{app}\lab-factory.exe"" install --target claude --dev-allow"; WorkingDir: "{app}"
 Name: "{group}\Lab Factory Windows README"; Filename: "{app}\README-WINDOWS.md"
 Name: "{group}\Lab Factory README"; Filename: "{app}\README.md"
 Name: "{group}\Lab Factory Agent Quick Install"; Filename: "{app}\INSTALL_FOR_AGENT.md"

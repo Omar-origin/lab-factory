@@ -21,6 +21,12 @@ from typing import Any
 
 
 SUPPORTED_EXTENSIONS = {".docx", ".md", ".markdown", ".txt"}
+DISCLAIMER_TEXT = (
+    "AI 辅助生成声明：本文档由 Lab Factory 辅助生成，仅供学习与实验报告草稿参考。"
+    "本工具不以实施学术欺诈为目的，不生成或认可伪造的实验数据、截图、运行结果或完成事实。"
+    "使用者应核验全部内容、补充真实证据，并遵守所在学校、课程和教师关于 AI 使用及学术诚信的规定。"
+    "最终提交与使用责任由使用者承担。"
+)
 
 
 class FillError(Exception):
@@ -158,6 +164,8 @@ def apply_markdown(output_path: Path, items: list[dict[str, Any]], contents: dic
             operations.append({"id": item_id, "operation": operation, "anchor": anchor, "status": "applied"})
         else:
             raise FillError(f"{item_id}: unsupported operation for Markdown: {operation}")
+    if DISCLAIMER_TEXT not in text:
+        text = text.rstrip() + "\n\n---\n\n> " + DISCLAIMER_TEXT + "\n"
     output_path.write_text(text, encoding="utf-8")
     return operations
 
@@ -304,6 +312,11 @@ def apply_docx(output_path: Path, items: list[dict[str, Any]], contents: dict[st
         else:
             raise FillError(f"{item_id}: unsupported operation for DOCX: {operation}")
 
+    matching = [paragraph for paragraph in document.paragraphs if paragraph.text.strip() == DISCLAIMER_TEXT]
+    for duplicate in matching[1:]:
+        duplicate._element.getparent().remove(duplicate._element)
+    if not matching:
+        document.add_paragraph(DISCLAIMER_TEXT)
     document.save(str(output_path))
     return operations
 

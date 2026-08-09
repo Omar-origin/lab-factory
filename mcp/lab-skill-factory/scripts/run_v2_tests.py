@@ -25,6 +25,7 @@ SPEC = importlib.util.spec_from_file_location("lab_factory_v2_engine", ENGINE_PA
 assert SPEC and SPEC.loader
 ENGINE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(ENGINE)
+GOLDEN_FORMAT = SCRIPT_ROOT / "evals" / "docx-golden-format.json"
 
 
 def make_template(path: Path) -> None:
@@ -261,6 +262,19 @@ def run() -> dict:
             './/w:p[.//w:t="第一条正文"]', namespaces=ENGINE.NS
         )[0]
         inserted_size = ENGINE.child_value(inserted_paragraph, ".//w:rPr/w:sz")
+        golden = json.loads(GOLDEN_FORMAT.read_text(encoding="utf-8"))["expected"]
+        results.append({
+            "name": "docx-semantic-golden",
+            "ok": (
+                formatting_result["changed_parts"] == golden["changed_parts"]
+                and ENGINE.element_text(body_run) == golden["replacement_text"]
+                and body_color == golden["replacement_color"]
+                and ENGINE.element_text(inserted_paragraph) == golden["inserted_text"]
+                and inserted_size == golden["inserted_size_half_points"]
+                and ENGINE.active_numbering(inserted_paragraph) is golden["inserted_numbering"]
+                and any(golden["remaining_cue_reason"] in cue["reasons"] for cue in formatting_result["remaining_template_cues"])
+            ),
+        })
         results.append({"name": "placeholder-color-normalized", "ok": body_color == "000000"})
         results.append({
             "name": "insert-after-uses-body-style",
@@ -441,6 +455,11 @@ def run() -> dict:
             results.append({
                 "name": "skill-quality-scaffold-and-validate",
                 "ok": generated.returncode == 0 and quality_validation.returncode == 0 and '"ok": true' in quality_validation.stdout,
+                "detail": None if generated.returncode == 0 and quality_validation.returncode == 0 else {
+                    "scaffold_stderr": generated.stderr[-1200:],
+                    "validation_stdout": quality_validation.stdout[-2400:],
+                    "validation_stderr": quality_validation.stderr[-1200:],
+                },
             })
             rejected = subprocess.run(
                 [sys.executable, str(scaffold_script), str(example_spec), str(root / "rejected-skills")],

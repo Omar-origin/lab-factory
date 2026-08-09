@@ -10,23 +10,26 @@ remain in the skill package and its helper scripts.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import importlib.util
 import json
 import os
 import runpy
 import subprocess
 import sys
-import urllib.error
-import urllib.request
+import time
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+MODULE_DIR = Path(__file__).resolve().parent
+if str(MODULE_DIR) not in sys.path:
+    sys.path.insert(0, str(MODULE_DIR))
+import commercial_client
+import autopilot
+
 
 SERVER_NAME = "lab-factory-mcp"
-SERVER_VERSION = "0.2.0"
+SERVER_VERSION = "1.0.0-beta.1"
 PROTOCOL_VERSION = "2024-11-05"
 
 FROZEN = bool(getattr(sys, "frozen", False))
@@ -34,8 +37,6 @@ BUNDLE_ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent)).re
 SERVER_DIR = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent
 REPO_ROOT = SERVER_DIR.parents[1] if not FROZEN else SERVER_DIR
 DEFAULT_SKILL_ROOT = (BUNDLE_ROOT / "skills" / "lab-skill-factory") if FROZEN else (REPO_ROOT / "skills" / "lab-skill-factory")
-DEFAULT_LICENSE_DB = SERVER_DIR / "activation_codes.json"
-DEFAULT_LICENSE_FILE = Path.home() / ".lab-factory" / "license.json"
 DEFAULT_VENDOR_DIR = SERVER_DIR / "vendor"
 
 
@@ -62,38 +63,18 @@ if vendor_dir().exists():
 class ToolError(Exception):
     """A user-actionable MCP tool error."""
 
-
-def utc_now() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    def __init__(self, message: str, code: str = "TOOL_ERROR", details: dict[str, Any] | None = None):
+        super().__init__(message)
+        self.code = code
+        self.details = details or {}
 
 
 def skill_root() -> Path:
     return Path(os.environ.get("LAB_FACTORY_SKILL_ROOT", DEFAULT_SKILL_ROOT)).expanduser().resolve()
 
 
-def license_db_path() -> Path:
-    return Path(os.environ.get("LAB_FACTORY_LICENSE_DB", DEFAULT_LICENSE_DB)).expanduser().resolve()
-
-
-def license_file_path() -> Path:
-    return Path(os.environ.get("LAB_FACTORY_LICENSE_FILE", DEFAULT_LICENSE_FILE)).expanduser().resolve()
-
-
-def auth_url() -> str | None:
-    value = os.environ.get("LAB_FACTORY_AUTH_URL", "").strip().rstrip("/")
-    return value or None
-
-
 def product_id() -> str:
-    return os.environ.get("LAB_FACTORY_PRODUCT_ID", "lab-skill-factory-beta")
-
-
-def device_id() -> str:
-    configured = os.environ.get("LAB_FACTORY_DEVICE_ID", "").strip()
-    if configured:
-        return configured
-    raw = f"{uuid.getnode()}:{os.environ.get('USER') or os.environ.get('USERNAME') or ''}:{os.uname().nodename if hasattr(os, 'uname') else ''}"
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
+    return os.environ.get("LAB_FACTORY_PRODUCT_ID", commercial_client.PRODUCT_ID)
 
 
 def python_executable() -> str:
@@ -111,225 +92,19 @@ def resolve_user_path(path_string: str) -> str:
     return str(path.resolve())
 
 
-def activation_hash(code: str) -> str:
-    normalized = code.strip()
-    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
-
-
-def load_activation_db() -> dict[str, Any]:
-    path = license_db_path()
-    if not path.exists():
-        return {"version": 1, "codes": [], "path": str(path), "exists": False}
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise ToolError(f"激活码库不是合法 JSON：{path}，错误：{exc}") from exc
-    if not isinstance(data, dict):
-        raise ToolError(f"激活码库顶层必须是对象：{path}")
-    data["path"] = str(path)
-    data["exists"] = True
-    return data
-
-
-def iter_code_entries(data: dict[str, Any]) -> list[dict[str, Any]]:
-    raw_codes = data.get("codes", [])
-    if not isinstance(raw_codes, list):
-        raise ToolError("激活码库中的 codes 必须是数组。")
-    entries: list[dict[str, Any]] = []
-    for raw in raw_codes:
-        if isinstance(raw, str):
-            entries.append({"sha256": raw})
-        elif isinstance(raw, dict):
-            entries.append(raw)
-        else:
-            raise ToolError("激活码库中的每个 code 必须是字符串 hash 或对象。")
-    return entries
-
-
-def parse_expiry(value: Any) -> datetime | None:
-    if not value:
-        return None
-    if not isinstance(value, str):
-        raise ToolError("expires_at 必须是 ISO 日期字符串，例如 2026-12-31。")
-    if len(value) == 10:
-        value = f"{value}T23:59:59+00:00"
-    if value.endswith("Z"):
-        value = value[:-1] + "+00:00"
-    try:
-        parsed = datetime.fromisoformat(value)
-    except ValueError as exc:
-        raise ToolError(f"无法解析 expires_at：{value}") from exc
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed
-
-
-def find_activation_entry(code_hash: str) -> dict[str, Any] | None:
-    data = load_activation_db()
-    now = datetime.now(timezone.utc)
-    for entry in iter_code_entries(data):
-        if entry.get("sha256") != code_hash:
-            continue
-        expires_at = parse_expiry(entry.get("expires_at"))
-        if expires_at is not None and expires_at < now:
-            raise ToolError("这个激活码已经过期，请换一个新的激活码。")
-        return entry
-    return None
-
-
-def read_license_file() -> dict[str, Any] | None:
-    path = license_file_path()
-    if not path.exists():
-        return None
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return None
-    return data if isinstance(data, dict) else None
-
-
-def post_json(url: str, payload: dict[str, Any], timeout: int = 8) -> dict[str, Any]:
-    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    request = urllib.request.Request(
-        url,
-        data=body,
-        headers={"Content-Type": "application/json", "Accept": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            data = response.read().decode("utf-8")
-            parsed = json.loads(data) if data else {}
-            if not isinstance(parsed, dict):
-                raise ToolError("远程授权服务返回值不是 JSON 对象。")
-            return parsed
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        raise ToolError(f"远程授权服务 HTTP {exc.code}: {detail[:800]}") from exc
-    except urllib.error.URLError as exc:
-        raise ToolError(f"无法连接远程授权服务：{exc}") from exc
-    except json.JSONDecodeError as exc:
-        raise ToolError(f"远程授权服务返回的 JSON 无法解析：{exc}") from exc
-
-
-def remote_activation_status(license_data: dict[str, Any] | None) -> dict[str, Any]:
-    url = auth_url()
-    if not url:
-        return {"activated": False, "mode": "remote_unconfigured"}
-    if not license_data or not isinstance(license_data.get("token"), str):
-        return {
-            "activated": False,
-            "mode": "remote_token",
-            "auth_url": url,
-            "license_file": str(license_file_path()),
-            "message": "尚未远程激活。请先调用 lab_factory_activate 并输入激活码。",
-        }
-    result = post_json(
-        f"{url}/verify",
-        {
-            "token": license_data["token"],
-            "device_id": license_data.get("device_id") or device_id(),
-            "product_id": license_data.get("product_id") or product_id(),
-        },
-    )
-    if not result.get("ok"):
-        return {
-            "activated": False,
-            "mode": "remote_token",
-            "auth_url": url,
-            "license_file": str(license_file_path()),
-            "message": result.get("error") or "远程授权校验失败。",
-        }
-    return {
-        "activated": True,
-        "mode": "remote_token",
-        "auth_url": url,
-        "license_file": str(license_file_path()),
-        "customer_id": license_data.get("customer_id"),
-        "device_id": license_data.get("device_id"),
-        "activated_at": license_data.get("activated_at"),
-        "server_status": result,
-    }
-
-
 def activation_status() -> dict[str, Any]:
-    if os.environ.get("LAB_FACTORY_DEV_ALLOW") == "1":
-        return {
-            "activated": True,
-            "mode": "development_override",
-            "message": "LAB_FACTORY_DEV_ALLOW=1 已开启，仅适合本地开发测试，正式分发必须移除。",
-        }
-
-    license_data = read_license_file()
-    if auth_url():
-        return remote_activation_status(license_data)
-
-    db = load_activation_db()
-    if not license_data:
-        if not db.get("exists", False):
-            return {
-                "activated": False,
-                "mode": "authorization_unconfigured",
-                "license_file": str(license_file_path()),
-                "activation_db": db.get("path"),
-                "activation_db_exists": False,
-                "message": (
-                    "当前没有可用的授权方式：未设置 LAB_FACTORY_AUTH_URL，"
-                    "并且本地 activation_codes.json 不存在。"
-                ),
-                "next_steps": [
-                    "免费内测：重新运行 install 并加上 --dev-allow。",
-                    "激活码模式：重新运行 install --auth-url <授权服务地址>，再执行 activate <激活码> --auth-url <授权服务地址>。",
-                ],
-            }
-        return {
-            "activated": False,
-            "mode": "local_hash_allowlist",
-            "license_file": str(license_file_path()),
-            "activation_db": db.get("path"),
-            "activation_db_exists": db.get("exists", False),
-            "message": "尚未激活。请先调用 lab_factory_activate 并输入激活码。",
-        }
-
-    code_hash = license_data.get("code_hash")
-    if not isinstance(code_hash, str):
-        return {
-            "activated": False,
-            "mode": "local_hash_allowlist",
-            "license_file": str(license_file_path()),
-            "message": "本地 license 文件缺少 code_hash，请重新激活。",
-        }
-
-    entry = find_activation_entry(code_hash)
-    if not entry:
-        return {
-            "activated": False,
-            "mode": "local_hash_allowlist",
-            "license_file": str(license_file_path()),
-            "activation_db": db.get("path"),
-            "message": "本地 license 存在，但激活码不在当前激活码库中，请重新激活。",
-        }
-
-    return {
-        "activated": True,
-        "mode": "local_hash_allowlist",
-        "license_file": str(license_file_path()),
-        "activation_db": db.get("path"),
-        "label": entry.get("label"),
-        "activated_at": license_data.get("activated_at"),
-        "customer_id": license_data.get("customer_id"),
-    }
+    return commercial_client.activation_status()
 
 
-def require_activation() -> None:
+def require_activation(enforce_minimum_version: bool = True) -> None:
     status = activation_status()
     if status.get("activated"):
         return
-    next_steps = status.get("next_steps")
-    guidance = "；".join(str(item) for item in next_steps) if isinstance(next_steps, list) else (
-        "先调用 lab_factory_activate；开发测试可使用 install --dev-allow。"
+    raise ToolError(
+        f"{status.get('message', '工具尚未激活。')} "
+        f"购买说明：{commercial_client.PURCHASE_URL}；支持：{commercial_client.SUPPORT_EMAIL}；"
+        "先调用 lab_factory_create_license_request，把请求文件发给销售者；收到许可证后调用 lab_factory_activate。"
     )
-    raise ToolError(f"{status.get('message', '工具尚未激活。')} 下一步：{guidance}")
 
 
 def run_skill_script(
@@ -395,6 +170,8 @@ def tool_status(_: dict[str, Any]) -> dict[str, Any]:
         "ok": True,
         "server": {"name": SERVER_NAME, "version": SERVER_VERSION},
         "activation": status,
+        "telemetry": commercial_client.telemetry_status(),
+        "telemetry_first_run_question": "是否允许在本机记录不含文档内容的匿名质量数据？数据仅在你主动导出并发送后才会离开设备。" if commercial_client.telemetry_status().get("telemetry") == "unset" else None,
         "skill_root": str(root),
         "skill_root_exists": root.exists(),
         "vendor_dir": str(vendor_dir()),
@@ -405,10 +182,7 @@ def tool_status(_: dict[str, Any]) -> dict[str, Any]:
             "note": "This server is not Codex-specific. Client differences are handled by config snippets.",
         },
         "available_scripts": sorted(p.name for p in (root / "scripts").glob("*.py")) if root.exists() else [],
-        "distribution_note": (
-            "当前 MVP 是本地 MCP 包装。源码级隐藏和防修改不能靠本地脚本绝对保证；"
-            "正式售卖建议使用远程授权/远程核心服务，或至少编译成签名二进制。"
-        ),
+        "distribution_note": "Lab Factory 1.x 付费内测：设备请求 + 人工签发 + 永久离线验签；反馈与更新均由用户手动处理。",
         "custom_skill_visibility_recommendation": (
             "建议让定制出来的专属 skill 可见、可编辑，因为它是用户自己的规则沉淀；"
             "不要把核心工厂逻辑、激活逻辑、完整报告正文或隐私材料写进专属 skill。"
@@ -496,17 +270,12 @@ def build_client_config(client: str) -> dict[str, Any]:
     env = {}
     if not FROZEN or os.environ.get("LAB_FACTORY_SKILL_ROOT"):
         env["LAB_FACTORY_SKILL_ROOT"] = str(skill_root())
-    if auth_url():
-        env["LAB_FACTORY_AUTH_URL"] = str(auth_url())
-    else:
-        env["LAB_FACTORY_LICENSE_DB"] = str(license_db_path())
     env["LAB_FACTORY_PRODUCT_ID"] = product_id()
-    if os.environ.get("LAB_FACTORY_DEV_ALLOW") == "1":
-        env["LAB_FACTORY_DEV_ALLOW"] = "1"
+    for key in ("LAB_FACTORY_PURCHASE_URL", "LAB_FACTORY_SUPPORT_EMAIL", "LAB_FACTORY_FEEDBACK_EMAIL"):
+        if os.environ.get(key):
+            env[key] = os.environ[key]
     if os.environ.get("LAB_FACTORY_WORKSPACE_ROOT"):
         env["LAB_FACTORY_WORKSPACE_ROOT"] = str(workspace_root())
-    if os.environ.get("LAB_FACTORY_LICENSE_FILE"):
-        env["LAB_FACTORY_LICENSE_FILE"] = str(license_file_path())
     if os.environ.get("LAB_FACTORY_VENDOR_DIR"):
         env["LAB_FACTORY_VENDOR_DIR"] = str(vendor_dir())
 
@@ -571,80 +340,98 @@ def tool_export_client_config(args: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
+def tool_create_license_request(args: dict[str, Any]) -> dict[str, Any]:
+    output = args.get("output_path")
+    if not isinstance(output, str) or not output.strip():
+        raise ToolError("output_path 必须是 .lfreq 文件路径。")
+    path = Path(resolve_user_path(output))
+    if path.suffix.lower() != ".lfreq":
+        raise ToolError("授权请求文件必须使用 .lfreq 扩展名。")
+    try:
+        return commercial_client.create_license_request(path)
+    except Exception as exc:
+        raise ToolError(f"生成授权请求失败：{exc}") from exc
+
+
 def tool_activate(args: dict[str, Any]) -> dict[str, Any]:
-    code = args.get("activation_code")
-    if not isinstance(code, str) or not code.strip():
-        raise ToolError("activation_code 必须是非空字符串。")
+    license_path = args.get("license_path")
+    if not isinstance(license_path, str) or not license_path.strip():
+        raise ToolError("license_path 必须是销售者发回的 .lflicense 文件路径。")
+    if args.get("adult_confirmed") is not True:
+        raise ToolError("激活前必须确认使用者已满18岁。")
+    terms_version = args.get("terms_version")
+    if terms_version != commercial_client.TERMS_VERSION:
+        raise ToolError(f"必须明确接受当前协议版本 {commercial_client.TERMS_VERSION}。")
+    try:
+        result = commercial_client.activate(Path(resolve_user_path(license_path)), True, terms_version)
+    except Exception as exc:
+        raise ToolError(f"激活失败：{exc}") from exc
+    if not result.get("ok"):
+        raise ToolError(f"激活失败：{result.get('error') or result}")
+    return {"ok": True, "message": "Lab Factory 1.x 创始内测永久离线授权导入成功。", **result}
 
-    if auth_url():
-        result = post_json(
-            f"{auth_url()}/activate",
-            {
-                "activation_code": code.strip(),
-                "customer_id": args.get("customer_id"),
-                "device_id": device_id(),
-                "product_id": product_id(),
-            },
-        )
-        if not result.get("ok") or not result.get("token"):
-            raise ToolError(f"远程激活失败：{result.get('error') or result}")
-        license_data = {
-            "status": "ACTIVE",
-            "license_mode": "remote_token",
-            "token": result["token"],
-            "customer_id": args.get("customer_id"),
-            "device_id": device_id(),
-            "product_id": product_id(),
-            "auth_url": auth_url(),
-            "activated_at": utc_now(),
-            "server": SERVER_NAME,
-        }
-        path = license_file_path()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(license_data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        return {
-            "ok": True,
-            "message": "远程激活成功。",
-            "license_file": str(path),
-            "auth_url": auth_url(),
-            "device_id": device_id(),
-            "expires_at": result.get("expires_at"),
-        }
 
-    code_hash = activation_hash(code)
-    db = load_activation_db()
-    if not db.get("exists", False):
-        raise ToolError(
-            "激活失败：当前未设置远程授权地址，且本地 activation_codes.json 不存在。"
-            "请使用 activate <激活码> --auth-url <授权服务地址>，"
-            "或在免费内测模式下重新执行 install --dev-allow。"
-        )
-    entry = find_activation_entry(code_hash)
-    if not entry:
-        raise ToolError(
-            "激活失败：激活码不在本地激活码库中。"
-            f"当前激活码库：{db.get('path')}，exists={db.get('exists', False)}。"
-        )
+def tool_deactivate(_: dict[str, Any]) -> dict[str, Any]:
+    result = commercial_client.deactivate()
+    if not result.get("ok"):
+        raise ToolError(str(result.get("error") or "解绑失败"))
+    return result
 
-    license_data = {
-        "status": "ACTIVE",
-        "code_hash": code_hash,
-        "label": entry.get("label"),
-        "customer_id": args.get("customer_id"),
-        "activated_at": utc_now(),
-        "server": SERVER_NAME,
-        "license_mode": "local_hash_allowlist_mvp",
+
+def tool_telemetry_settings(args: dict[str, Any]) -> dict[str, Any]:
+    action = args.get("action", "status")
+    if action == "enable":
+        return commercial_client.set_telemetry(True)
+    if action == "disable":
+        return commercial_client.set_telemetry(False)
+    if action == "status":
+        return commercial_client.telemetry_status()
+    if action == "clear":
+        return commercial_client.clear_telemetry()
+    raise ToolError("action 只能是 enable、disable、status 或 clear。")
+
+
+def tool_submit_draft_feedback(args: dict[str, Any]) -> dict[str, Any]:
+    require_activation()
+    rating = args.get("rating")
+    edit_time = args.get("edit_time_bucket")
+    categories = args.get("issue_categories", [])
+    if not isinstance(rating, int) or rating < 1 or rating > 5:
+        raise ToolError("rating 必须是 1-5 的整数。")
+    if edit_time not in {"under_15m", "15_30m", "30_60m", "over_60m"}:
+        raise ToolError("edit_time_bucket 不合法。")
+    if not isinstance(categories, list) or not all(isinstance(item, str) for item in categories):
+        raise ToolError("issue_categories 必须是字符串数组。")
+    status = activation_status()
+    feedback = {
+        "review_id": require_string(args, "review_id"), "rating": rating,
+        "issue_categories": categories[:10], "edit_time_bucket": edit_time,
+        "channel_id": status.get("channel_id"),
     }
-    path = license_file_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(license_data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return {
-        "ok": True,
-        "message": "激活成功。",
-        "license_file": str(path),
-        "label": entry.get("label"),
-        "expires_at": entry.get("expires_at"),
-    }
+    try:
+        result = commercial_client.record_feedback(feedback)
+    except Exception as exc:
+        raise ToolError(f"反馈记录失败：{exc}") from exc
+    if not result.get("ok"):
+        raise ToolError(str(result.get("error") or "反馈记录失败"))
+    return result
+
+
+def tool_export_feedback(args: dict[str, Any]) -> dict[str, Any]:
+    output = args.get("output_path")
+    if not isinstance(output, str) or not output.strip():
+        raise ToolError("output_path 必须是导出文件路径。")
+    try:
+        return commercial_client.export_feedback(Path(resolve_user_path(output)))
+    except Exception as exc:
+        raise ToolError(f"反馈导出失败：{exc}") from exc
+
+
+def tool_verify_update(args: dict[str, Any]) -> dict[str, Any]:
+    path, sha256 = args.get("path"), args.get("sha256")
+    if not isinstance(path, str) or not isinstance(sha256, str) or len(sha256) != 64:
+        raise ToolError("path 和 64 位 SHA-256 必须提供。")
+    return commercial_client.verify_update_file(Path(resolve_user_path(path)), sha256)
 
 
 def tool_inspect_materials(args: dict[str, Any]) -> dict[str, Any]:
@@ -743,6 +530,114 @@ def require_string(args: dict[str, Any], key: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ToolError(f"{key} 必须是非空字符串。")
     return value.strip()
+
+
+def require_integer(args: dict[str, Any], key: str) -> int:
+    value = args.get(key)
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ToolError(f"{key} 必须是整数。")
+    return value
+
+
+def run_autopilot(function: Any, *args: Any, **kwargs: Any) -> dict[str, Any]:
+    try:
+        return function(*args, **kwargs)
+    except autopilot.AutopilotError as exc:
+        raise ToolError(str(exc), code=exc.code, details=exc.details) from exc
+
+
+def tool_v2_prepare_autopilot(args: dict[str, Any]) -> dict[str, Any]:
+    require_activation()
+    mode = args.get("mode", "balanced")
+    if mode == "strict":
+        workspace = require_string(args, "workspace")
+        raw_key = require_string(args, "idempotency_key")
+        try:
+            strict_report_id = "strict_" + uuid.UUID(raw_key).hex[:12]
+        except ValueError as exc:
+            raise ToolError("idempotency_key 必须是 UUID。", code="IDEMPOTENCY_KEY_INVALID") from exc
+        legacy_state_path = Path(resolve_user_path(workspace)) / "lab-factory" / "session-state.json"
+        if legacy_state_path.exists():
+            existing = v2_session_status(workspace)
+            session = existing.get("session") or {}
+            if session.get("version") != "2.0" or session.get("report_id") != strict_report_id:
+                raise ToolError("workspace 已存在其他会话。", code="SESSION_EXISTS")
+            legacy = existing
+        else:
+            legacy = run_v2([
+                "create-session", resolve_user_path(workspace),
+                "--subject", require_string(args, "subject"), "--report-id", strict_report_id,
+            ])
+        return {
+            "ok": True, "mode": "strict", "legacy_session": legacy.get("session"),
+            "next_action": "ask_user", "reason_code": "STRICT_REQUIREMENTS_CONFIRMATION",
+            "required_tool": "lab_factory_v2_confirm_requirements",
+            "note": "strict 模式映射现有 v2.0 逐阶段确认流程；后续继续使用旧 v2 工具。",
+        }
+    writing_profile = args.get("writing_profile_path")
+    style_card = args.get("style_card_path")
+    return run_autopilot(
+        autopilot.prepare,
+        Path(resolve_user_path(require_string(args, "workspace"))),
+        require_string(args, "idempotency_key"),
+        require_string(args, "subject"),
+        mode,
+        Path(resolve_user_path(require_string(args, "requirements_path"))),
+        Path(resolve_user_path(require_string(args, "template_profile_path"))),
+        Path(resolve_user_path(writing_profile)) if isinstance(writing_profile, str) and writing_profile.strip() else None,
+        Path(resolve_user_path(style_card)) if isinstance(style_card, str) and style_card.strip() else None,
+    )
+
+
+def tool_v2_answer_questions(args: dict[str, Any]) -> dict[str, Any]:
+    require_activation()
+    answers = args.get("answers")
+    if not isinstance(answers, list):
+        raise ToolError("answers 必须是数组。")
+    return run_autopilot(
+        autopilot.answer_questions,
+        Path(resolve_user_path(require_string(args, "workspace"))),
+        require_integer(args, "state_version"),
+        require_string(args, "idempotency_key"),
+        require_string(args, "plan_id"),
+        answers,
+    )
+
+
+def tool_v2_confirm_checkpoint(args: dict[str, Any]) -> dict[str, Any]:
+    require_activation()
+    return run_autopilot(
+        autopilot.confirm_checkpoint,
+        Path(resolve_user_path(require_string(args, "workspace"))),
+        require_integer(args, "state_version"),
+        require_string(args, "idempotency_key"),
+        require_string(args, "checkpoint_id"),
+        require_string(args, "summary_sha256"),
+    )
+
+
+def tool_v2_advance_autopilot(args: dict[str, Any]) -> dict[str, Any]:
+    require_activation()
+    artifacts = args.get("artifacts", {})
+    if not isinstance(artifacts, dict):
+        raise ToolError("artifacts 必须是对象。")
+    token = args.get("confirmation_token")
+    return run_autopilot(
+        autopilot.advance,
+        Path(resolve_user_path(require_string(args, "workspace"))),
+        require_integer(args, "state_version"),
+        require_string(args, "idempotency_key"),
+        token if isinstance(token, str) and token else None,
+        artifacts,
+    )
+
+
+def tool_v2_autopilot_status(args: dict[str, Any]) -> dict[str, Any]:
+    require_activation()
+    return run_autopilot(
+        autopilot.status,
+        Path(resolve_user_path(require_string(args, "workspace"))),
+    )
 
 
 def v2_session_status(workspace: str) -> dict[str, Any]:
@@ -984,6 +879,9 @@ def tool_v2_finalize(args: dict[str, Any]) -> dict[str, Any]:
         similarity = run_v2(command, allow_validation_failure=True)
     if not similarity.get("ok"):
         raise ToolError(f"相似性门禁阻止 finalize：{similarity.get('findings')}")
+    disclaimer = run_v2(["ensure-disclaimer", resolve_user_path(require_string(args, "generated_path"))])
+    if disclaimer.get("disclaimer_count") != 1:
+        raise ToolError("AI 辅助生成声明无法安全写入，Finalize 已阻止。")
     transition = run_v2(
         [
             "advance-session", resolve_user_path(workspace), "--event", "finalize",
@@ -991,7 +889,7 @@ def tool_v2_finalize(args: dict[str, Any]) -> dict[str, Any]:
             "--feedback", require_string(args, "user_confirmation_summary"),
         ]
     )
-    return {"ok": True, "similarity_gate": similarity, "session": transition.get("session"), "next_actions": ["continue_revision", "review_skill_update", "finish_without_update"]}
+    return {"ok": True, "similarity_gate": similarity, "disclaimer": disclaimer, "session": transition.get("session"), "next_actions": ["continue_revision", "review_skill_update", "finish_without_update"]}
 
 
 def tool_v2_decide_iteration(args: dict[str, Any]) -> dict[str, Any]:
@@ -1211,17 +1109,48 @@ TOOLS: dict[str, dict[str, Any]] = {
         "handler": tool_status,
     },
     "lab_factory_activate": {
-        "description": "输入激活码，激活本地 Lab Skill Factory MCP。MVP 使用本地 hash allowlist。",
+        "description": "导入销售者针对本机请求签发的 .lflicense 永久离线许可证。",
         "inputSchema": {
             "type": "object",
-            "required": ["activation_code"],
+            "required": ["license_path", "terms_version", "adult_confirmed"],
             "properties": {
-                "activation_code": {"type": "string", "description": "你发给用户的激活码。"},
-                "customer_id": {"type": "string", "description": "可选，客户标识；不要填姓名、学号等敏感信息。"},
+                "license_path": {"type": "string", "description": "销售者发回的 .lflicense 文件路径。"},
+                "terms_version": {"type": "string", "const": "1.0"},
+                "adult_confirmed": {"type": "boolean", "const": True},
             },
             "additionalProperties": False,
         },
         "handler": tool_activate,
+    },
+    "lab_factory_create_license_request": {
+        "description": "为当前安装生成 .lfreq 请求文件；用户将它发给销售者以取得离线许可证。",
+        "inputSchema": {"type": "object", "required": ["output_path"], "properties": {"output_path": {"type": "string"}}, "additionalProperties": False},
+        "handler": tool_create_license_request,
+    },
+    "lab_factory_deactivate": {
+        "description": "从本机移除许可证。离线许可证无法远程吊销，换机需联系销售者重新签发。",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "handler": tool_deactivate,
+    },
+    "lab_factory_telemetry_settings": {
+        "description": "开启、关闭、清除或查看仅保存在本机的结构化使用记录；不会自动上传。",
+        "inputSchema": {"type": "object", "required": ["action"], "properties": {"action": {"type": "string", "enum": ["enable", "disable", "status", "clear"]}}, "additionalProperties": False},
+        "handler": tool_telemetry_settings,
+    },
+    "lab_factory_submit_draft_feedback": {
+        "description": "草稿审阅后在本机记录一次不含正文的结构化质量反馈。",
+        "inputSchema": {"type": "object", "required": ["review_id", "rating", "issue_categories", "edit_time_bucket"], "properties": {"review_id": {"type": "string"}, "rating": {"type": "integer", "minimum": 1, "maximum": 5}, "issue_categories": {"type": "array", "items": {"type": "string"}, "maxItems": 10}, "edit_time_bucket": {"type": "string", "enum": ["under_15m", "15_30m", "30_60m", "over_60m"]}}, "additionalProperties": False},
+        "handler": tool_submit_draft_feedback,
+    },
+    "lab_factory_export_feedback": {
+        "description": "导出本地白名单遥测和结构化反馈；用户自行检查并发送到反馈邮箱。",
+        "inputSchema": {"type": "object", "required": ["output_path"], "properties": {"output_path": {"type": "string"}}, "additionalProperties": False},
+        "handler": tool_export_feedback,
+    },
+    "lab_factory_verify_update": {
+        "description": "校验人工收到的更新安装包 SHA-256；不会下载或安装。",
+        "inputSchema": {"type": "object", "required": ["path", "sha256"], "properties": {"path": {"type": "string"}, "sha256": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"}}, "additionalProperties": False},
+        "handler": tool_verify_update,
     },
     "lab_factory_check_runtime": {
         "description": "检查随 MCP 打包的 Python 运行时依赖是否可用，尤其是 DOCX 处理相关库。",
@@ -1423,6 +1352,73 @@ TOOLS: dict[str, dict[str, Any]] = {
         },
         "handler": tool_v2_apply_section_plan,
     },
+    "lab_factory_v2_prepare_autopilot": {
+        "description": "创建结果优先的 v2.1 报告自动驾驶会话，汇总 8 维偏好、格式来源和首个 preflight 确认点；不生成正文。",
+        "inputSchema": {
+            "type": "object",
+            "required": ["workspace", "idempotency_key", "subject", "mode", "requirements_path", "template_profile_path"],
+            "properties": {
+                "workspace": {"type": "string"}, "idempotency_key": {"type": "string", "format": "uuid"},
+                "subject": {"type": "string"},
+                "mode": {"type": "string", "enum": ["balanced", "strict", "fast"], "default": "balanced"},
+                "requirements_path": {"type": "string"}, "template_profile_path": {"type": "string"},
+                "writing_profile_path": {"type": "string"}, "style_card_path": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+        "handler": tool_v2_prepare_autopilot,
+    },
+    "lab_factory_v2_answer_questions": {
+        "description": "一次回答当前 interaction plan 的阻断问题；稳定偏好会进入草稿画像，完成后生成 preflight 摘要。",
+        "inputSchema": {
+            "type": "object", "required": ["workspace", "state_version", "idempotency_key", "plan_id", "answers"],
+            "properties": {
+                "workspace": {"type": "string"}, "state_version": {"type": "integer", "minimum": 1},
+                "idempotency_key": {"type": "string", "format": "uuid"}, "plan_id": {"type": "string"},
+                "answers": {"type": "array", "minItems": 1, "items": {
+                    "type": "object", "required": ["question_id", "value"],
+                    "properties": {"question_id": {"type": "string"}, "value": {}}, "additionalProperties": False,
+                }},
+            },
+            "additionalProperties": False,
+        },
+        "handler": tool_v2_answer_questions,
+    },
+    "lab_factory_v2_confirm_checkpoint": {
+        "description": "确认已展示的 preflight 或最终 DOCX 摘要，并签发绑定摘要哈希和状态版本的一次性 token。",
+        "inputSchema": {
+            "type": "object", "required": ["workspace", "state_version", "idempotency_key", "checkpoint_id", "summary_sha256"],
+            "properties": {
+                "workspace": {"type": "string"}, "state_version": {"type": "integer", "minimum": 1},
+                "idempotency_key": {"type": "string", "format": "uuid"},
+                "checkpoint_id": {"type": "string", "enum": ["preflight", "final_review"]},
+                "summary_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            },
+            "additionalProperties": False,
+        },
+        "handler": tool_v2_confirm_checkpoint,
+    },
+    "lab_factory_v2_advance_autopilot": {
+        "description": "按风险策略批量推进连续低风险步骤，直到需要宿主产物、例外提问、最终验收或完成。",
+        "inputSchema": {
+            "type": "object", "required": ["workspace", "state_version", "idempotency_key", "artifacts"],
+            "properties": {
+                "workspace": {"type": "string"}, "state_version": {"type": "integer", "minimum": 1},
+                "idempotency_key": {"type": "string", "format": "uuid"},
+                "confirmation_token": {"type": "string"}, "artifacts": {"type": "object"},
+            },
+            "additionalProperties": False,
+        },
+        "handler": tool_v2_advance_autopilot,
+    },
+    "lab_factory_v2_autopilot_status": {
+        "description": "只读恢复 v2.1 自动驾驶状态和当前 interaction plan，不改变 state_version。",
+        "inputSchema": {
+            "type": "object", "required": ["workspace"],
+            "properties": {"workspace": {"type": "string"}}, "additionalProperties": False,
+        },
+        "handler": tool_v2_autopilot_status,
+    },
     "lab_factory_v2_create_session": {
         "description": "创建可跨客户端重启恢复的 v2 报告会话，保存 variation seed、状态和审计日志。",
         "inputSchema": {
@@ -1596,14 +1592,39 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
     if not spec:
         raise ToolError(f"未知工具：{name}")
     handler = spec["handler"]
+    started = time.monotonic()
     try:
         data = handler(args)
+        event = {
+            "event": "tool_call", "version": SERVER_VERSION, "platform": sys.platform,
+            "architecture": commercial_client.client_platform()[1], "tool": name,
+            "ok": data.get("ok", True) is not False, "error_code": "",
+            "duration_ms": int((time.monotonic() - started) * 1000),
+            "channel_id": commercial_client.read_json(commercial_client.LICENSE_METADATA_FILE).get("channel_id"),
+        }
+        if isinstance(data.get("remaining_template_cues"), list):
+            event["placeholder_count"] = len(data["remaining_template_cues"])
+        if isinstance(data.get("gate"), str):
+            event["quality_gate"] = data["gate"]
+        if name not in {"lab_factory_status", "lab_factory_telemetry_settings", "lab_factory_activate"}:
+            commercial_client.record_telemetry(event)
         return {
             "content": [{"type": "text", "text": json_text(data)}],
             "structuredContent": data,
         }
     except ToolError as exc:
-        data = {"ok": False, "error": str(exc)}
+        data = {"ok": False, "error": str(exc), "error_code": exc.code}
+        if exc.details:
+            data["details"] = exc.details
+        event = {
+            "event": "tool_call", "version": SERVER_VERSION, "platform": sys.platform,
+            "architecture": commercial_client.client_platform()[1], "tool": name,
+            "ok": False, "error_code": exc.code.lower(),
+            "duration_ms": int((time.monotonic() - started) * 1000),
+            "channel_id": commercial_client.read_json(commercial_client.LICENSE_METADATA_FILE).get("channel_id"),
+        }
+        if name not in {"lab_factory_status", "lab_factory_telemetry_settings", "lab_factory_activate"}:
+            commercial_client.record_telemetry(event)
         return {
             "content": [{"type": "text", "text": json_text(data)}],
             "structuredContent": data,
@@ -1634,9 +1655,10 @@ def handle_request(message: dict[str, Any]) -> dict[str, Any] | None:
                     "capabilities": {"tools": {}},
                     "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
                     "instructions": (
-                        "Use lab_factory_activate before protected tools. New report workflows should use lab_factory_v2_*: "
-                        "create session, confirm requirements, inventory headings, optionally propose and confirm a section plan, "
-                        "compile template, resolve placements, apply draft, review, finalize."
+                        "If unlicensed, use lab_factory_create_license_request, send the .lfreq to the seller, then import the returned .lflicense with lab_factory_activate. "
+                        "New reports should start with lab_factory_v2_prepare_autopilot and obey its next_action. "
+                        "Balanced mode normally asks only for stable preferences, preflight confirmation, exceptions that materially affect quality or safety, and final DOCX review. "
+                        "Legacy v2.0 sessions continue with the strict lab_factory_v2_create_session workflow."
                     ),
                 },
             )
