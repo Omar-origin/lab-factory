@@ -222,7 +222,14 @@ def main() -> int:
     activate.add_argument("--accept-terms-version", required=True)
     activate.add_argument("--confirm-age-18", action="store_true", required=True)
 
+    activate_key = sub.add_parser("activate-key", help="Bind an online activation key to this installation.")
+    activate_key.add_argument("activation_key")
+    activate_key.add_argument("--control-url")
+    activate_key.add_argument("--accept-terms-version", required=True)
+    activate_key.add_argument("--confirm-age-18", action="store_true", required=True)
+
     sub.add_parser("deactivate", help="Deactivate this installation.")
+    sub.add_parser("request-refund", help="Request a no-reason refund during the configured 3/7-day window.")
     telemetry = sub.add_parser("telemetry", help="Enable, disable, or inspect anonymous usage data collection.")
     telemetry.add_argument("action", choices=["enable", "disable", "status", "clear"])
     feedback = sub.add_parser("feedback", help="Record one structured draft review locally.")
@@ -248,6 +255,7 @@ def main() -> int:
     install.add_argument("--purchase-url", required=True)
     install.add_argument("--support-email", required=True)
     install.add_argument("--feedback-email")
+    install.add_argument("--control-url")
     install.add_argument("--codex-config", default=str(installer.DEFAULT_CODEX_CONFIG))
     install.add_argument("--claude-scope", choices=["local", "user", "project"], default="user")
     install.add_argument("--dry-run", action="store_true")
@@ -356,8 +364,20 @@ def main() -> int:
             server.tool_activate,
             {"license_path": args.license_file, "adult_confirmed": args.confirm_age_18, "terms_version": args.accept_terms_version},
         )
+    if args.command == "activate-key":
+        return call_tool(
+            server.tool_activate_key,
+            {
+                "activation_key": args.activation_key,
+                "control_url": args.control_url,
+                "adult_confirmed": args.confirm_age_18,
+                "terms_version": args.accept_terms_version,
+            },
+        )
     if args.command == "deactivate":
         return call_tool(server.tool_deactivate, {})
+    if args.command == "request-refund":
+        return call_tool(server.tool_request_refund, {"confirm_refund_request": True})
     if args.command == "telemetry":
         return call_tool(server.tool_telemetry_settings, {"action": args.action})
     if args.command == "feedback":

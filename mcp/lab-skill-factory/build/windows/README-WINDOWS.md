@@ -3,7 +3,7 @@
 安装后运行：
 
 ```powershell
-lab-factory install --target both --purchase-url "微信联系销售者" --support-email support@example.com --feedback-email feedback@example.com
+lab-factory install --target both --purchase-url "https://lab.alan.elyther.top/buy" --support-email "QQ群923937311" --feedback-email "QQ群923937311" --control-url https://lab.alan.elyther.top
 lab-factory license-request --output device.lfreq
 lab-factory activate device.lflicense --accept-terms-version 1.0 --confirm-age-18
 ```

@@ -43,6 +43,8 @@ def env_map(args: argparse.Namespace) -> dict[str, str]:
     env["LAB_FACTORY_PURCHASE_URL"] = args.purchase_url
     env["LAB_FACTORY_SUPPORT_EMAIL"] = args.support_email
     env["LAB_FACTORY_FEEDBACK_EMAIL"] = args.feedback_email or args.support_email
+    if getattr(args, "control_url", None):
+        env["LAB_FACTORY_CONTROL_URL"] = args.control_url.rstrip("/")
     return env
 
 

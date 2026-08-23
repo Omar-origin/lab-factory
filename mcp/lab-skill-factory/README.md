@@ -1,6 +1,6 @@
 # Lab Factory MCP
 
-Lab Factory 1.x 是面向课程实验报告工作流的本地 MCP 工具。当前付费内测采用纯离线人工闭环，不需要服务器、域名、数据库或支付接口。
+Lab Factory 1.x 是面向课程实验报告工作流的本地 MCP 工具。当前商业主线采用轻量密钥中控：一个密钥绑定一个安装，通过 24 小时签名租约支持退款和违规封禁；报告处理仍完全在本地。
 
 ## v2.1 报告自动驾驶
 
@@ -16,18 +16,35 @@ Lab Factory 1.x 是面向课程实验报告工作流的本地 MCP 工具。当�
 
 默认使用 `balanced`，正常任务只有 preflight 和最终 DOCX 两个常规确认点。旧 v2.0 会话继续使用 strict 流程；`fast` 暂未开放。
 
-## 当前商业闭环
+## 当前商业授权
 
-- 用户通过微信/支付宝向你付款。
-- 用户运行 `license-request` 生成本机 `.lfreq` 文件并发给你。
-- 你在自己的设备上用 Ed25519 私钥签发 `.lflicense`，再发回用户。
-- 客户端只内置公钥，导入后永久离线验签；私钥永不进入发行包。
-- 授权绑定随机安装 ID，不读取用户名、机器名或硬件指纹。
+- 用户从独立 `/buy` 页面创建订单，通过支付宝经营码付款；GitHub 只提供购买链接和发行说明。
+- 首发暂只开放支付宝经营码，售后与激活协助QQ群为 `923937311`。
+- 用户提交交易号/备注和付款时间，你在商户记录中人工核款，不接收付款截图。
+- 你在中控确认到账并一次性签发 3 天或 7 天退款密钥，通过订单中的私密联系方式发送给用户。
+- 用户运行 `activate-key`，中控原子绑定随机安装 ID 和安装公钥，列表立即显示“已使用”。
+- 客户端每次启动尝试刷新，之后每 6 小时刷新；签名租约最长 24 小时。
+- 退款申请、完成退款或违规封禁后不再续租，最迟 24 小时后停止使用。
+- 授权准确表述为“绑定一个安装”，不读取用户名、机器名或硬件指纹，也不处理共享电脑和完整克隆。
 - 使用数据默认不记录；用户同意后仅在本机记录白名单字段，主动导出后自行发邮件。
 - 更新包由你人工发送，用户先核对 SHA-256，再按说明安装。
 - 草稿/终稿固定追加一次 AI 辅助生成声明，无法安全追加时阻止 Finalize。
 
-离线方案的明确限制：已经发出的许可证无法远程吊销，也无法自动限制换绑频率。换机、退款例外和分销统计都通过本地签发台账人工处理。
+原有 `.lfreq` / `.lflicense` 离线流程保留为兼容入口，但无法远程封禁，不再作为新商业密钥的默认流程。
+
+## 密钥中控快速开始
+
+完整部署见 [在线密钥中控与 24 小时租约](docs/REMOTE_AUTH_DEPLOYMENT.md) 和 [Cloudflare 商业中控部署](docs/CLOUDFLARE_COMMERCIAL_DEPLOYMENT.md)。正式购买页为 `https://lab.alan.elyther.top/buy`，卖家中控为 `https://lab.alan.elyther.top/admin`。支付配置与运营步骤见 [购买页、人工核款与退款运营](docs/COMMERCIAL_PURCHASE.md)。
+
+```bash
+python3 mcp/lab-skill-factory/auth/license_control_admin.py keys create \
+  --refund-days 7 --label "首批体验" --customer-ref order-001
+python3 mcp/lab-skill-factory/auth/license_control_admin.py keys list
+python3 mcp/lab-skill-factory/auth/license_control_admin.py keys ban lfkey_xxx --reason "违规原因"
+python3 mcp/lab-skill-factory/auth/license_control_admin.py orders list --status payment_submitted
+python3 mcp/lab-skill-factory/auth/license_control_admin.py orders confirm-payment lforder_xxx
+python3 mcp/lab-skill-factory/auth/license_control_admin.py orders issue lforder_xxx
+```
 
 ## 首次初始化签发者
 
@@ -57,10 +74,11 @@ python3 mcp/lab-skill-factory/auth/commercial_admin.py issue-license \
 ## 用户使用
 
 ```bash
-lab-factory install --target both --purchase-url "微信联系销售者" \
-  --support-email support@example.com --feedback-email feedback@example.com
-lab-factory license-request --output device.lfreq
-lab-factory activate device.lflicense --accept-terms-version 1.0 --confirm-age-18
+lab-factory install --target both --purchase-url "https://lab.alan.elyther.top/buy" \
+  --support-email "QQ群923937311" --feedback-email "QQ群923937311" \
+  --control-url https://lab.alan.elyther.top
+lab-factory activate-key 'LF-XXXX-...' --accept-terms-version 1.0 --confirm-age-18
+lab-factory request-refund
 lab-factory telemetry enable
 lab-factory feedback-export --output lab-factory-feedback.json
 lab-factory verify-update 新安装包 --sha256 <你公布的SHA-256>
@@ -75,8 +93,9 @@ python3 mcp/lab-skill-factory/scripts/run_v2_tests.py
 python3 mcp/lab-skill-factory/scripts/run_autopilot_tests.py
 python3 mcp/lab-skill-factory/scripts/test_install_and_activation.py
 python3 mcp/lab-skill-factory/scripts/test_commercial_flow.py
+python3 mcp/lab-skill-factory/scripts/test_online_license_control.py
 ```
 
 源码开发可临时设置 `LAB_FACTORY_DEV_ALLOW=1`；冻结发行包忽略该变量。
 
-详细说明见 [离线授权与人工商业闭环](docs/OFFLINE_LICENSING.md)、[用户指南](USER_GUIDE.md) 和 [跨平台说明](docs/WINDOWS_MAC_USAGE.md)。
+详细说明见 [在线密钥中控](docs/REMOTE_AUTH_DEPLOYMENT.md)、[离线兼容授权](docs/OFFLINE_LICENSING.md)、[用户指南](USER_GUIDE.md) 和 [跨平台说明](docs/WINDOWS_MAC_USAGE.md)。

@@ -15,18 +15,23 @@
 
 ## 激活
 
-```bash
-lab-factory license-request --output device.lfreq
-```
-
-将 `device.lfreq` 发给销售者。收到 `device.lflicense` 后：
+尚未购买时，从销售者公布的独立 `/buy` 页面创建订单。订单页不需要账号，也不会要求上传付款截图；请保存页面返回的订单查询 Token。
 
 ```bash
-lab-factory activate device.lflicense --accept-terms-version 1.0 --confirm-age-18
+lab-factory activate-key '销售者提供的密钥' \
+  --accept-terms-version 1.0 --confirm-age-18
 lab-factory status
 ```
 
-许可证只适用于生成请求的这次安装。换机或应用数据丢失时重新生成请求并联系销售者。
+密钥首次使用后绑定当前安装。客户端每次启动尝试刷新授权，授权服务暂时不可达时可以继续使用尚未到期的本地租约，最长不超过 24 小时。
+
+在销售者为密钥配置的 3 天或 7 天期限内，可提交无理由退款申请：
+
+```bash
+lab-factory request-refund
+```
+
+提交后中控停止签发新租约。换机或应用数据丢失时联系销售者重置安装绑定。共享电脑或完整环境克隆不在授权保证范围内。
 
 ## 反馈
 

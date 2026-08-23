@@ -103,7 +103,7 @@ def require_activation(enforce_minimum_version: bool = True) -> None:
     raise ToolError(
         f"{status.get('message', '工具尚未激活。')} "
         f"购买说明：{commercial_client.PURCHASE_URL}；支持：{commercial_client.SUPPORT_EMAIL}；"
-        "先调用 lab_factory_create_license_request，把请求文件发给销售者；收到许可证后调用 lab_factory_activate。"
+        "在线密钥用户调用 lab_factory_activate_key；离线许可证用户调用 lab_factory_activate。"
     )
 
 
@@ -182,7 +182,7 @@ def tool_status(_: dict[str, Any]) -> dict[str, Any]:
             "note": "This server is not Codex-specific. Client differences are handled by config snippets.",
         },
         "available_scripts": sorted(p.name for p in (root / "scripts").glob("*.py")) if root.exists() else [],
-        "distribution_note": "Lab Factory 1.x 付费内测：设备请求 + 人工签发 + 永久离线验签；反馈与更新均由用户手动处理。",
+        "distribution_note": "Lab Factory 1.x 商业授权：一个密钥绑定一个安装，在线租约最长 24 小时；报告内容始终只在本地处理。",
         "custom_skill_visibility_recommendation": (
             "建议让定制出来的专属 skill 可见、可编辑，因为它是用户自己的规则沉淀；"
             "不要把核心工厂逻辑、激活逻辑、完整报告正文或隐私材料写进专属 skill。"
@@ -371,11 +371,38 @@ def tool_activate(args: dict[str, Any]) -> dict[str, Any]:
     return {"ok": True, "message": "Lab Factory 1.x 创始内测永久离线授权导入成功。", **result}
 
 
+def tool_activate_key(args: dict[str, Any]) -> dict[str, Any]:
+    activation_key = args.get("activation_key")
+    if not isinstance(activation_key, str) or not activation_key.strip():
+        raise ToolError("activation_key 必须是中控生成的非空密钥。")
+    if args.get("adult_confirmed") is not True:
+        raise ToolError("激活前必须确认使用者已满18岁。")
+    terms_version = args.get("terms_version")
+    if terms_version != commercial_client.TERMS_VERSION:
+        raise ToolError(f"必须明确接受当前协议版本 {commercial_client.TERMS_VERSION}。")
+    control_url = args.get("control_url")
+    if control_url is not None and not isinstance(control_url, str):
+        raise ToolError("control_url 必须是字符串。")
+    try:
+        return commercial_client.activate_key(activation_key, True, terms_version, control_url or "")
+    except Exception as exc:
+        raise ToolError(f"在线密钥激活失败：{exc}") from exc
+
+
 def tool_deactivate(_: dict[str, Any]) -> dict[str, Any]:
     result = commercial_client.deactivate()
     if not result.get("ok"):
         raise ToolError(str(result.get("error") or "解绑失败"))
     return result
+
+
+def tool_request_refund(args: dict[str, Any]) -> dict[str, Any]:
+    if args.get("confirm_refund_request") is not True:
+        raise ToolError("退款申请会立即停止签发新租约，必须明确设置 confirm_refund_request=true。")
+    try:
+        return commercial_client.request_refund()
+    except Exception as exc:
+        raise ToolError(f"退款申请失败：{exc}") from exc
 
 
 def tool_telemetry_settings(args: dict[str, Any]) -> dict[str, Any]:
@@ -1122,15 +1149,41 @@ TOOLS: dict[str, dict[str, Any]] = {
         },
         "handler": tool_activate,
     },
+    "lab_factory_activate_key": {
+        "description": "把中控生成的在线密钥绑定到当前安装，并取得最长 24 小时的签名租约。",
+        "inputSchema": {
+            "type": "object",
+            "required": ["activation_key", "terms_version", "adult_confirmed"],
+            "properties": {
+                "activation_key": {"type": "string", "minLength": 16},
+                "control_url": {"type": "string"},
+                "terms_version": {"type": "string", "const": "1.0"},
+                "adult_confirmed": {"type": "boolean", "const": True},
+            },
+            "additionalProperties": False,
+        },
+        "handler": tool_activate_key,
+    },
     "lab_factory_create_license_request": {
         "description": "为当前安装生成 .lfreq 请求文件；用户将它发给销售者以取得离线许可证。",
         "inputSchema": {"type": "object", "required": ["output_path"], "properties": {"output_path": {"type": "string"}}, "additionalProperties": False},
         "handler": tool_create_license_request,
     },
     "lab_factory_deactivate": {
-        "description": "从本机移除许可证。离线许可证无法远程吊销，换机需联系销售者重新签发。",
+        "description": "从本机移除授权凭据。在线密钥仍保持安装绑定，换机需由销售者在中控重置。",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
         "handler": tool_deactivate,
+    },
+    "lab_factory_request_refund": {
+        "description": "在密钥配置的 3 天或 7 天无理由退款期限内提交退款申请；提交后停止签发新租约。",
+        "inputSchema": {
+            "type": "object",
+            "required": ["confirm_refund_request"],
+            "properties": {"confirm_refund_request": {"type": "boolean", "const": True}},
+            "additionalProperties": False,
+        },
+        "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True, "openWorldHint": True},
+        "handler": tool_request_refund,
     },
     "lab_factory_telemetry_settings": {
         "description": "开启、关闭、清除或查看仅保存在本机的结构化使用记录；不会自动上传。",
@@ -1573,13 +1626,14 @@ TOOLS: dict[str, dict[str, Any]] = {
 def public_tool_specs() -> list[dict[str, Any]]:
     specs = []
     for name, spec in TOOLS.items():
-        specs.append(
-            {
-                "name": name,
-                "description": spec["description"],
-                "inputSchema": spec["inputSchema"],
-            }
-        )
+        public = {
+            "name": name,
+            "description": spec["description"],
+            "inputSchema": spec["inputSchema"],
+        }
+        if isinstance(spec.get("annotations"), dict):
+            public["annotations"] = spec["annotations"]
+        specs.append(public)
     return specs
 
 
@@ -1655,7 +1709,7 @@ def handle_request(message: dict[str, Any]) -> dict[str, Any] | None:
                     "capabilities": {"tools": {}},
                     "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
                     "instructions": (
-                        "If unlicensed, use lab_factory_create_license_request, send the .lfreq to the seller, then import the returned .lflicense with lab_factory_activate. "
+                        "If given an online activation key, use lab_factory_activate_key. Offline license files remain supported through lab_factory_activate. "
                         "New reports should start with lab_factory_v2_prepare_autopilot and obey its next_action. "
                         "Balanced mode normally asks only for stable preferences, preflight confirmation, exceptions that materially affect quality or safety, and final DOCX review. "
                         "Legacy v2.0 sessions continue with the strict lab_factory_v2_create_session workflow."

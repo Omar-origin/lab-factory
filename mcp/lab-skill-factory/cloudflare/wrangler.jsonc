@@ -1,0 +1,32 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "lab-factory-commercial",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-23",
+  "workers_dev": true,
+  "routes": [
+    { "pattern": "lab.alan.elyther.top", "custom_domain": true }
+  ],
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": true,
+    "html_handling": "none",
+    "not_found_handling": "none"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "lab-factory-commercial",
+      "database_id": "4c794e72-7514-487b-b143-dc42f1c3fccf",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    "PRODUCT_ID": "lab-factory-1",
+    "PRICE_CENTS": "990",
+    "REFUND_DAYS": "7",
+    "SUPPORT_CONTACT": "售后QQ群：923937311",
+    "LEASE_KEY_ID": "lfleasepk_baf99d3b6ee0b6be"
+  }
+}

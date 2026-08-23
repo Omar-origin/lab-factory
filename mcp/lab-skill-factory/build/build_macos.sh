@@ -27,6 +27,7 @@ pyinstaller \
   --add-data "$MCP_DIR/evals:evals" \
   --add-data "$MCP_DIR/install.py:." \
   --add-data "$MCP_DIR/license_public_key.json:." \
+  --add-data "$MCP_DIR/lease_public_key.json:." \
   "$MCP_DIR/cli.py"
 
 if [[ -n "${CODESIGN_IDENTITY:-}" ]]; then

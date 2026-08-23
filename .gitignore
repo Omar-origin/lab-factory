@@ -5,6 +5,7 @@ __pycache__/
 # Local agent/workspace state
 .codex/
 .agents/
+/.wrangler/
 
 # Local outputs and user report material
 实验报告助手输出/
@@ -28,7 +29,15 @@ mcp/lab-skill-factory/*.license.json
 *.lflicense
 issuer-private.json
 license-ledger.jsonl
+lease-private*.json
+*license-control*.sqlite3*
+.control-secrets
 mcp/lab-skill-factory/vendor/
 mcp/lab-skill-factory/dist/
+mcp/lab-skill-factory/private/
+mcp/lab-skill-factory/cloudflare/public/payment-assets/
+mcp/lab-skill-factory/cloudflare/node_modules/
+mcp/lab-skill-factory/cloudflare/.wrangler/
+mcp/lab-skill-factory/cloudflare/.dev.vars*
 mcp/lab-skill-factory/build/pyinstaller-work/
 mcp/lab-skill-factory/build/*.spec

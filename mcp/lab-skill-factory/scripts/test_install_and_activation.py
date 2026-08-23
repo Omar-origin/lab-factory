@@ -22,13 +22,19 @@ import install
 def install_args(**overrides):
     values = {"skill_root": None, "workspace_root": None, "product_id": "lab-factory-1",
               "purchase_url": "微信联系销售者", "support_email": "support@example.test",
-              "feedback_email": "feedback@example.test", "codex_config": None,
+              "feedback_email": "feedback@example.test", "control_url": None, "codex_config": None,
               "claude_scope": "user", "dry_run": False}
     values.update(overrides)
     return argparse.Namespace(**values)
 
 
 class InstallerTests(unittest.TestCase):
+    def test_control_url_is_written_without_seller_secrets(self):
+        env = install.env_map(install_args(control_url="https://license.example.test/"))
+        self.assertEqual(env["LAB_FACTORY_CONTROL_URL"], "https://license.example.test")
+        self.assertNotIn("LAB_CONTROL_ADMIN_TOKEN", env)
+        self.assertNotIn("LAB_CONTROL_KEY_PEPPER", env)
+
     def test_codex_env_is_merged_without_bypass(self):
         with tempfile.TemporaryDirectory() as temp:
             config = Path(temp) / "config.toml"
@@ -42,7 +48,7 @@ class InstallerTests(unittest.TestCase):
         snippet = install.codex_config_snippet(r"C:\Program Files\Lab Factory\lab-factory.exe", ["serve-mcp"], {"LAB_FACTORY_WORKSPACE_ROOT": r"C:\Users\Tester\实验"})
         self.assertEqual(tomllib.loads(snippet)["mcp_servers"]["lab-skill-factory"]["command"], r"C:\Program Files\Lab Factory\lab-factory.exe")
 
-    def test_offline_configuration_has_no_server_or_private_key(self):
+    def test_client_configuration_has_no_private_key(self):
         env = install.env_map(install_args())
         self.assertEqual(env["LAB_FACTORY_FEEDBACK_EMAIL"], "feedback@example.test")
         self.assertNotIn("LAB_FACTORY_AUTH_URL", env)

@@ -35,6 +35,7 @@ pyinstaller `
   --add-data "$McpDir\evals;evals" `
   --add-data "$McpDir\install.py;." `
   --add-data "$McpDir\license_public_key.json;." `
+  --add-data "$McpDir\lease_public_key.json;." `
   "$McpDir\cli.py"
 
 Write-Host "Built: $(Join-Path $DistDir ($AppName + '.exe'))"

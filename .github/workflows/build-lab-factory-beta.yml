@@ -50,6 +50,9 @@ jobs:
       - name: Test commercial flow
         run: python mcp/lab-skill-factory/scripts/test_commercial_flow.py
 
+      - name: Test online license control
+        run: python mcp/lab-skill-factory/scripts/test_online_license_control.py
+
       - name: Build macOS binary
         if: runner.os == 'macOS'
         run: bash mcp/lab-skill-factory/build/build_macos.sh

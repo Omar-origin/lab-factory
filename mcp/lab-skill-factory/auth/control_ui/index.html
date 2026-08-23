@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lab Factory · 密钥中控</title>
+  <link rel="stylesheet" href="/admin/control.css">
+</head>
+<body>
+  <div class="grain" aria-hidden="true"></div>
+  <header class="masthead">
+    <div>
+      <p class="kicker">LAB FACTORY / LICENSE CONTROL</p>
+      <h1>密钥中控台</h1>
+    </div>
+    <div class="signal"><i></i><span id="connectionState">未连接</span></div>
+  </header>
+
+  <main>
+    <section id="loginPanel" class="login-panel">
+      <div>
+        <span class="section-code">AUTH / 00</span>
+        <h2>连接中控</h2>
+        <p>管理员 Token 仅保存在当前页面内存中，刷新页面后自动清除。</p>
+      </div>
+      <form id="loginForm">
+        <label>管理员 Token<input id="adminToken" type="password" autocomplete="off" required minlength="32"></label>
+        <button type="submit" class="primary">进入中控</button>
+      </form>
+    </section>
+
+    <div id="controlPanel" hidden>
+      <section class="metrics" aria-label="密钥概览">
+        <article><small>总密钥</small><strong id="metricTotal">0</strong></article>
+        <article><small>未使用</small><strong id="metricUnused">0</strong></article>
+        <article><small>使用中</small><strong id="metricActive">0</strong></article>
+        <article class="alert"><small>退款 / 封禁</small><strong id="metricBlocked">0</strong></article>
+      </section>
+
+      <section class="ledger order-ledger">
+        <div class="ledger-head">
+          <div><span class="section-code">ORDERS / 01</span><h2>购买订单</h2></div>
+          <div class="filters">
+            <select id="orderStatusFilter" aria-label="按订单状态筛选">
+              <option value="">全部状态</option><option value="payment_pending">等待付款</option>
+              <option value="payment_submitted">等待核款</option><option value="payment_rejected">付款未通过</option>
+              <option value="paid">已付款</option><option value="key_issued">已签发</option>
+              <option value="delivered">已交付</option><option value="refund_requested">退款申请</option><option value="refunded">已退款</option>
+            </select>
+            <button id="refreshOrders" type="button">刷新</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>订单</th><th>状态</th><th>渠道 / 金额</th><th>付款核验</th><th>联系方式</th><th>操作</th></tr></thead>
+            <tbody id="orderRows"></tbody>
+          </table>
+        </div>
+        <p id="emptyOrders" class="empty" hidden>当前筛选条件下没有订单。</p>
+      </section>
+
+      <section class="workspace">
+        <aside class="create-panel">
+          <span class="section-code">ISSUE / 01</span>
+          <h2>创建新密钥</h2>
+          <form id="createForm">
+            <label>备注<input name="label" maxlength="120" placeholder="例如：首批体验用户"></label>
+            <label>订单引用<input name="customer_ref" maxlength="120" placeholder="不填写敏感身份信息"></label>
+            <fieldset>
+              <legend>无理由退款期限</legend>
+              <label class="radio"><input type="radio" name="refund_days" value="7" checked><span>7 天</span></label>
+              <label class="radio"><input type="radio" name="refund_days" value="3"><span>3 天</span></label>
+            </fieldset>
+            <button class="primary" type="submit">生成一次性密钥</button>
+          </form>
+          <div id="newKeyPanel" class="new-key" hidden>
+            <small>明文只显示这一次</small>
+            <code id="newKeyValue"></code>
+            <div class="button-row">
+              <button id="copyKey" type="button">复制密钥</button>
+              <button id="markSent" type="button">标记已发送</button>
+            </div>
+          </div>
+        </aside>
+
+        <section class="ledger">
+          <div class="ledger-head">
+            <div><span class="section-code">LEDGER / 02</span><h2>授权台账</h2></div>
+            <div class="filters">
+              <select id="statusFilter" aria-label="按状态筛选">
+                <option value="">全部状态</option><option value="unused">未使用</option><option value="active">使用中</option>
+                <option value="refund_requested">申请退款</option><option value="refunded">已退款</option><option value="banned">已封禁</option>
+              </select>
+              <button id="refreshList" type="button">刷新</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>密钥</th><th>状态</th><th>绑定</th><th>退款期限</th><th>最后活动</th><th>操作</th></tr></thead>
+              <tbody id="keyRows"></tbody>
+            </table>
+          </div>
+          <p id="emptyState" class="empty" hidden>当前筛选条件下没有密钥。</p>
+        </section>
+      </section>
+    </div>
+  </main>
+
+  <dialog id="detailDialog">
+    <form method="dialog"><button class="dialog-close" aria-label="关闭">×</button></form>
+    <span class="section-code">AUDIT / 03</span>
+    <h2 id="detailTitle">密钥详情</h2>
+    <dl id="detailFields"></dl>
+    <h3>审计记录</h3>
+    <ol id="auditList" class="audit-list"></ol>
+  </dialog>
+  <dialog id="issuedKeyDialog">
+    <form method="dialog"><button class="dialog-close" aria-label="关闭">×</button></form>
+    <span class="section-code">DELIVERY / ONE-TIME</span>
+    <h2>密钥已签发</h2>
+    <p>明文只显示这一次。复制并通过订单联系方式发送，确认发送后再标记交付。</p>
+    <div class="issued-key"><code id="issuedKeyValue"></code><button id="copyIssuedKey" type="button">复制密钥</button></div>
+  </dialog>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="/admin/control.js" defer></script>
+</body>
+</html>

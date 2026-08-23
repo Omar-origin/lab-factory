@@ -6,12 +6,17 @@ import hashlib
 import json
 import os
 import platform
+import secrets
 import stat
 import sys
+import urllib.error
+import urllib.request
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from lease_crypto import create_device_key, parse_utc, sign_device_message, verify_lease
 from offline_license import (
     FORMAT_VERSION, PRODUCT_ID, REQUEST_FORMAT, TERMS_VERSION, read_object, utc_now,
     verify_license, write_json,
@@ -25,6 +30,7 @@ LICENSE_METADATA_FILE = APP_DIR / "license.json"
 TELEMETRY_LOG = APP_DIR / "telemetry.jsonl"
 FEEDBACK_LOG = APP_DIR / "feedback.jsonl"
 PUBLIC_KEY_FILE = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent)) / "license_public_key.json"
+LEASE_PUBLIC_KEY_FILE = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent)) / "lease_public_key.json"
 PURCHASE_URL = os.environ.get("LAB_FACTORY_PURCHASE_URL", "请联系销售者购买")
 SUPPORT_EMAIL = os.environ.get("LAB_FACTORY_SUPPORT_EMAIL", "support@example.invalid")
 FEEDBACK_EMAIL = os.environ.get("LAB_FACTORY_FEEDBACK_EMAIL", SUPPORT_EMAIL)
@@ -34,6 +40,14 @@ TELEMETRY_ALLOWLIST = {
     "channel_id",
 }
 FEEDBACK_ALLOWLIST = {"review_id", "rating", "issue_categories", "edit_time_bucket", "channel_id"}
+_ONLINE_REFRESH_ATTEMPTED = False
+
+
+class OnlineControlError(Exception):
+    def __init__(self, message: str, *, code: str = "ONLINE_CONTROL_ERROR", unavailable: bool = False):
+        super().__init__(message)
+        self.code = code
+        self.unavailable = unavailable
 
 
 def read_json(path: Path, default: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -59,6 +73,20 @@ def install_id() -> str:
     return value
 
 
+def installation_key() -> dict[str, Any]:
+    record = read_json(DEVICE_FILE)
+    if isinstance(record.get("install_id"), str) and isinstance(record.get("device_key"), dict):
+        return record["device_key"]
+    current_install_id = record.get("install_id") if isinstance(record.get("install_id"), str) else install_id()
+    key = create_device_key()
+    write_private_json(DEVICE_FILE, {
+        "install_id": current_install_id,
+        "created_at": record.get("created_at") or utc_now(),
+        "device_key": key,
+    })
+    return key
+
+
 def client_platform() -> tuple[str, str]:
     system, machine = platform.system().lower(), platform.machine().lower()
     return ("macos" if system == "darwin" else "windows" if system == "windows" else system,
@@ -69,6 +97,56 @@ def embedded_public_key() -> dict[str, Any]:
     override = os.environ.get("LAB_FACTORY_LICENSE_PUBLIC_KEY_FILE", "").strip()
     path = Path(override) if override and not bool(getattr(sys, "frozen", False)) else PUBLIC_KEY_FILE
     return read_json(path)
+
+
+def embedded_lease_public_key() -> dict[str, Any]:
+    override = os.environ.get("LAB_FACTORY_LEASE_PUBLIC_KEY_FILE", "").strip()
+    path = Path(override) if override and not bool(getattr(sys, "frozen", False)) else LEASE_PUBLIC_KEY_FILE
+    return read_json(path)
+
+
+def control_url(credential: dict[str, Any] | None = None) -> str:
+    configured = os.environ.get("LAB_FACTORY_CONTROL_URL", "").strip().rstrip("/")
+    if configured:
+        return configured
+    if credential and isinstance(credential.get("control_url"), str):
+        return credential["control_url"].strip().rstrip("/")
+    return ""
+
+
+def post_json(url: str, payload: dict[str, Any], timeout: int = 8) -> dict[str, Any]:
+    body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    request = urllib.request.Request(
+        url,
+        data=body,
+        headers={"Content-Type": "application/json", "Accept": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            parsed = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        if exc.code in {408, 429, 500, 502, 503, 504}:
+            raise OnlineControlError(
+                f"authorization service is temporarily unavailable (HTTP {exc.code})",
+                code="AUTH_UNAVAILABLE",
+                unavailable=True,
+            ) from exc
+        try:
+            parsed_error = json.loads(exc.read().decode("utf-8", errors="replace"))
+            error = parsed_error.get("error") if isinstance(parsed_error, dict) else None
+            if isinstance(error, dict):
+                raise OnlineControlError(str(error.get("message") or "authorization rejected"), code=str(error.get("code") or "AUTH_REJECTED")) from exc
+        except (json.JSONDecodeError, AttributeError):
+            pass
+        raise OnlineControlError(f"authorization service returned HTTP {exc.code}", code="AUTH_HTTP_ERROR") from exc
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        raise OnlineControlError(f"cannot reach authorization service: {exc}", code="AUTH_UNAVAILABLE", unavailable=True) from exc
+    except json.JSONDecodeError as exc:
+        raise OnlineControlError("authorization service returned invalid JSON", code="INVALID_AUTH_RESPONSE") from exc
+    if not isinstance(parsed, dict) or not parsed.get("ok"):
+        raise OnlineControlError("authorization service rejected the request", code="AUTH_REJECTED")
+    return parsed
 
 
 def create_license_request(output_path: Path) -> dict[str, Any]:
@@ -109,16 +187,22 @@ class CredentialStore:
         return value if isinstance(value, dict) else None
 
     def save(self, license_envelope: dict[str, Any], metadata: dict[str, Any]) -> None:
+        self._save_value(license_envelope, metadata)
+
+    def save_online(self, credential: dict[str, Any], metadata: dict[str, Any]) -> None:
+        self._save_value(credential, metadata)
+
+    def _save_value(self, credential: dict[str, Any], metadata: dict[str, Any]) -> None:
         keyring, stored = self._keyring(), False
         if keyring:
             try:
-                keyring.set_password(self.service, self.username, json.dumps(license_envelope, ensure_ascii=False))
+                keyring.set_password(self.service, self.username, json.dumps(credential, ensure_ascii=False))
                 stored = True
             except Exception:
                 pass
         value = dict(metadata, credential_backend="keyring" if stored else "restricted_file")
         if not stored:
-            value["license"] = license_envelope
+            value["license"] = credential
         write_private_json(LICENSE_METADATA_FILE, value)
 
     def clear(self) -> None:
@@ -146,13 +230,199 @@ def activate(license_path: Path, adult_confirmed: bool, terms_version: str) -> d
             "license_id": payload["license_id"], "entitlement": payload["entitlement"]}
 
 
+def activate_key(activation_key: str, adult_confirmed: bool, terms_version: str, requested_control_url: str = "") -> dict[str, Any]:
+    if not adult_confirmed or terms_version != TERMS_VERSION:
+        raise ValueError(f"must confirm age 18+ and accept terms version {TERMS_VERSION}")
+    url = requested_control_url.strip().rstrip("/") or control_url()
+    if not url:
+        raise ValueError("authorization control URL is not configured")
+    key = installation_key()
+    result = post_json(f"{url}/api/activate", {
+        "activation_key": activation_key.strip(),
+        "install_id": install_id(),
+        "device_public_key": key["public_key"],
+    })
+    lease = result.get("lease")
+    if not isinstance(lease, dict):
+        raise OnlineControlError("authorization response did not include a signed lease", code="LEASE_MISSING")
+    payload = verify_lease(
+        lease,
+        embedded_lease_public_key(),
+        install_id=install_id(),
+        product_id=PRODUCT_ID,
+    )
+    credential = {
+        "credential_type": "online_lease",
+        "version": 1,
+        "control_url": url,
+        "activation_token": result["activation_token"],
+        "lease": lease,
+    }
+    CredentialStore().save_online(credential, {
+        "status": "ACTIVE",
+        "license_mode": "online_lease",
+        "license_key_id": payload["license_key_id"],
+        "refund_deadline": result.get("refund_deadline"),
+        "refund_days": result.get("refund_days"),
+        "activated_at": utc_now(),
+    })
+    return {
+        "ok": True,
+        "activated": True,
+        "mode": "online_lease",
+        "license_key_id": payload["license_key_id"],
+        "lease_expires_at": payload["expires_at"],
+        "refresh_after": payload["refresh_after"],
+        "refund_deadline": result.get("refund_deadline"),
+    }
+
+
+def _online_proof(credential: dict[str, Any], action: str) -> dict[str, Any]:
+    token = credential.get("activation_token")
+    if not isinstance(token, str) or not token:
+        raise OnlineControlError("local online credential has no activation token", code="TOKEN_MISSING")
+    message = {
+        "action": action,
+        "activation_token": token,
+        "install_id": install_id(),
+        "timestamp": utc_now(),
+        "nonce": secrets.token_urlsafe(24),
+    }
+    return {
+        "activation_token": token,
+        "proof": message,
+        "signature": sign_device_message(installation_key(), message),
+    }
+
+
+def refresh_online_lease(credential: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    url = control_url(credential)
+    if not url:
+        raise OnlineControlError("authorization control URL is not configured", code="CONTROL_URL_MISSING")
+    result = post_json(f"{url}/api/lease/refresh", _online_proof(credential, "refresh"))
+    lease = result.get("lease")
+    if not isinstance(lease, dict):
+        raise OnlineControlError("authorization response did not include a signed lease", code="LEASE_MISSING")
+    payload = verify_lease(
+        lease,
+        embedded_lease_public_key(),
+        install_id=install_id(),
+        product_id=PRODUCT_ID,
+    )
+    updated = dict(credential, lease=lease, control_url=url)
+    CredentialStore().save_online(updated, {
+        "status": "ACTIVE",
+        "license_mode": "online_lease",
+        "license_key_id": payload["license_key_id"],
+        "last_refreshed_at": utc_now(),
+        "lease_expires_at": payload["expires_at"],
+    })
+    return updated, payload
+
+
+def request_refund() -> dict[str, Any]:
+    credential = CredentialStore().get()
+    if not credential or credential.get("credential_type") != "online_lease":
+        raise ValueError("this installation has no online license eligible for a refund request")
+    url = control_url(credential)
+    if not url:
+        raise ValueError("authorization control URL is not configured")
+    result = post_json(f"{url}/api/refunds/request", _online_proof(credential, "refund_request"))
+    metadata = read_json(LICENSE_METADATA_FILE)
+    metadata.update({"status": "REFUND_REQUESTED", "refund_requested_at": utc_now()})
+    if metadata.get("credential_backend") != "keyring":
+        metadata["license"] = credential
+    write_private_json(LICENSE_METADATA_FILE, metadata)
+    return {
+        "ok": True,
+        "status": result.get("status"),
+        "refund_deadline": result.get("refund_deadline"),
+        "message": "退款申请已提交，中控已停止签发新租约；现有租约最迟在 24 小时内失效。",
+    }
+
+
+def _online_activation_status(credential: dict[str, Any], refresh: bool) -> dict[str, Any]:
+    global _ONLINE_REFRESH_ATTEMPTED
+    lease = credential.get("lease")
+    if not isinstance(lease, dict):
+        return {"activated": False, "mode": "online_lease", "message": "本地在线授权缺少租约，请重新输入激活密钥。"}
+    cached_payload: dict[str, Any] | None = None
+    cached_error = ""
+    try:
+        cached_payload = verify_lease(
+            lease,
+            embedded_lease_public_key(),
+            install_id=install_id(),
+            product_id=PRODUCT_ID,
+        )
+    except Exception as exc:
+        cached_error = str(exc)
+    now = datetime.now(timezone.utc)
+    due = refresh or not _ONLINE_REFRESH_ATTEMPTED
+    if cached_payload:
+        due = due or parse_utc(str(cached_payload["refresh_after"])) <= now
+    if due:
+        _ONLINE_REFRESH_ATTEMPTED = True
+        try:
+            credential, refreshed = refresh_online_lease(credential)
+            cached_payload = refreshed
+            cached_error = ""
+        except OnlineControlError as exc:
+            if not exc.unavailable:
+                return {
+                    "activated": False,
+                    "mode": "online_lease",
+                    "error_code": exc.code,
+                    "message": f"在线授权已被拒绝：{exc}",
+                }
+            if not cached_payload:
+                return {
+                    "activated": False,
+                    "mode": "online_lease",
+                    "error_code": exc.code,
+                    "message": f"授权服务暂时不可达，且本地 24 小时租约不可用：{cached_error or exc}",
+                }
+            return {
+                "activated": True,
+                "mode": "online_lease_offline_window",
+                "license_key_id": cached_payload["license_key_id"],
+                "lease_expires_at": cached_payload["expires_at"],
+                "refresh_after": cached_payload["refresh_after"],
+                "warning": "授权服务暂时不可达；当前安装只能使用到本地租约到期。",
+            }
+        except Exception as exc:
+            return {
+                "activated": False,
+                "mode": "online_lease",
+                "error_code": "INVALID_LEASE",
+                "message": f"在线租约校验失败：{exc}",
+            }
+    if not cached_payload:
+        return {"activated": False, "mode": "online_lease", "message": f"本地在线租约无效：{cached_error}"}
+    return {
+        "activated": True,
+        "mode": "online_lease",
+        "license_key_id": cached_payload["license_key_id"],
+        "lease_expires_at": cached_payload["expires_at"],
+        "refresh_after": cached_payload["refresh_after"],
+    }
+
+
 def activation_status(refresh: bool = False) -> dict[str, Any]:
     if os.environ.get("LAB_FACTORY_DEV_ALLOW") == "1" and not bool(getattr(sys, "frozen", False)):
         return {"activated": True, "mode": "source_development_override"}
     envelope = CredentialStore().get()
     if not envelope:
+        if control_url():
+            return {
+                "activated": False,
+                "mode": "online_lease",
+                "message": f"尚未激活。请输入销售者提供的在线密钥。购买：{PURCHASE_URL}；支持：{SUPPORT_EMAIL}",
+            }
         return {"activated": False, "mode": "offline_permanent_license",
                 "message": f"尚未激活。先生成授权请求并发送给销售者。购买：{PURCHASE_URL}；支持：{SUPPORT_EMAIL}"}
+    if envelope.get("credential_type") == "online_lease":
+        return _online_activation_status(envelope, refresh)
     try:
         payload = verify_license(envelope, embedded_public_key())
     except Exception as exc:
@@ -167,7 +437,7 @@ def deactivate() -> dict[str, Any]:
     existed = CredentialStore().get() is not None
     CredentialStore().clear()
     return {"ok": True, "removed": existed,
-            "message": "已从本机移除授权。离线授权无法远程吊销；换机请生成新请求并联系销售者。"}
+            "message": "已从本机移除授权。在线密钥仍保持安装绑定；换机需要销售者在中控重置绑定。"}
 
 
 def preferences() -> dict[str, Any]:

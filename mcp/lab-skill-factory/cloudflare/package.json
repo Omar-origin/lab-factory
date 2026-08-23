@@ -1,0 +1,20 @@
+{
+  "name": "lab-factory-commercial-cloudflare",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "sync-assets": "python3 scripts/sync_assets.py",
+    "predev": "npm run sync-assets",
+    "dev": "wrangler dev",
+    "predeploy": "npm run sync-assets && npm run check",
+    "deploy": "wrangler deploy",
+    "db:local": "wrangler d1 migrations apply DB --local",
+    "db:remote": "wrangler d1 migrations apply DB --remote"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260823.1",
+    "typescript": "^5.9.2",
+    "wrangler": "^4.125.0"
+  }
+}
