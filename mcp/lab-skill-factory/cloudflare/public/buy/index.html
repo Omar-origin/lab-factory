@@ -32,14 +32,14 @@
           <div><dt>升级</dt><dd>正式创始版抵扣 ¥9.9</dd></div>
           <div><dt>退款</dt><dd id="refundSummary">7 天无理由</dd></div>
         </dl>
-        <p>一个密钥绑定一个安装。人工核款后 12 小时内交付。</p>
+        <p>一个密钥绑定一个安装。卖家确认到账后，订单页自动发货。</p>
       </aside>
     </section>
 
     <section class="checkout-section" id="checkout">
       <div class="section-title"><span>CHECKOUT / 02</span><h2>三步完成购买</h2><p>不注册账号，不上传付款截图。</p></div>
       <div class="checkout-grid">
-        <ol class="steps" aria-label="购买步骤"><li class="active" data-step="1"><b>01</b><span>创建订单</span></li><li data-step="2"><b>02</b><span>提交付款信息</span></li><li data-step="3"><b>03</b><span>等待交付</span></li></ol>
+        <ol class="steps" aria-label="购买步骤"><li class="active" data-step="1"><b>01</b><span>创建订单</span></li><li data-step="2"><b>02</b><span>提交付款信息</span></li><li data-step="3"><b>03</b><span>自动取货</span></li></ol>
 
         <div class="checkout-card">
           <section id="createStep">
@@ -68,6 +68,11 @@
             <p class="card-code">ORDER / STATUS</p><div class="status-heading"><h3 id="statusTitle">正在查询</h3><span id="statusBadge" class="status-badge"></span></div>
             <p id="statusMessage" class="status-message"></p>
             <dl id="statusFields" class="status-fields"></dl>
+            <div id="deliveryKeyBox" class="delivery-key" hidden>
+              <span>你的激活密钥</span><code id="deliveryKeyValue"></code>
+              <button id="copyDeliveryKey" type="button">复制激活密钥</button>
+              <p>请勿公开转发。首次激活后，这把密钥会绑定当前安装。</p>
+            </div>
             <div class="token-box"><span>订单查询 Token</span><code id="statusToken"></code><button id="copyToken" type="button">复制</button></div>
             <p class="token-warning">Token 等同订单查询凭证。本站不设账号，请妥善保存且不要公开。</p>
             <div class="status-actions"><button id="refreshOrder" class="button" type="button">刷新状态</button><button id="requestRefund" class="button danger" type="button" hidden>申请退款</button></div>
@@ -79,7 +84,7 @@
     <section class="principles" aria-label="产品原则">
       <article><b>01</b><h3>完全本地</h3><p>购买层不接触报告正文、模板、课程材料、截图和本地文件路径。</p></article>
       <article><b>02</b><h3>安装绑定</h3><p>一个密钥绑定一个安装，用于阻止普通转发；不读取硬件指纹。</p></article>
-      <article><b>03</b><h3>人工交付</h3><p>首批订单人工核款，不承诺即时到账；目标在 12 小时内发送密钥。</p></article>
+      <article><b>03</b><h3>半自动发货</h3><p>卖家人工核对支付宝账单；确认到账后，订单页自动显示密钥。</p></article>
     </section>
 
     <section class="policy" id="policy">

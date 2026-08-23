@@ -103,9 +103,7 @@ function randomToken(): string {
 }
 
 const BASE32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-function activationKey(): string {
-  const bytes = new Uint8Array(20);
-  crypto.getRandomValues(bytes);
+function activationKeyFromBytes(bytes: Uint8Array): string {
   let bits = 0, value = 0, encoded = "";
   for (const byte of bytes) {
     value = (value << 8) | byte;
@@ -117,6 +115,20 @@ function activationKey(): string {
   }
   if (bits) encoded += BASE32[(value << (5 - bits)) & 31];
   return `LF-${encoded.match(/.{1,4}/g)!.join("-")}`;
+}
+
+function activationKey(): string {
+  const bytes = new Uint8Array(20);
+  crypto.getRandomValues(bytes);
+  return activationKeyFromBytes(bytes);
+}
+
+async function orderActivationKey(env: Env, orderId: string): Promise<string> {
+  return activationKeyFromBytes((await hmacBytes(env.KEY_PEPPER, `order-delivery:v1:${orderId}`)).slice(0, 20));
+}
+
+async function orderLicenseKeyId(orderId: string): Promise<string> {
+  return `lfkey_${(await sha256(`order-license:v1:${orderId}`)).slice(0, 32)}`;
 }
 
 function normalizeKey(value: string): string {
@@ -192,6 +204,9 @@ async function orderValue(env: Env, row: Row, publicView: boolean): Promise<Row>
     const key = await env.DB.prepare("SELECT status,key_suffix,refund_deadline,activated_at FROM license_keys WHERE id=?").bind(row.license_key_id).first<Row>();
     if (key) result.license = key;
   }
+  if (publicView && row.status === "delivered" && row.delivery_key_version === "derived-v1") {
+    result.activation_key = await orderActivationKey(env, String(row.id));
+  }
   return result;
 }
 
@@ -216,7 +231,7 @@ async function checkoutConfig(env: Env): Promise<Response> {
       available: true,
     }],
     support_contact: env.SUPPORT_CONTACT,
-    delivery_commitment: "人工核款后 12 小时内发送激活密钥",
+    delivery_commitment: "人工核款确认后，订单页自动显示激活密钥",
   });
 }
 
@@ -458,7 +473,29 @@ async function adminOrderAction(request: Request, env: Env, id: string, action: 
   const current = String(row.status);
   const time = nowIso();
   let plaintext = "";
-  if (action === "confirm-payment") {
+  if (action === "confirm-and-deliver") {
+    if (current !== "delivered") {
+      if (current !== "payment_submitted") throw new HttpError(409, "INVALID_STATE", `order cannot be auto-delivered from ${current}`);
+      plaintext = await orderActivationKey(env, id);
+      const keyId = await orderLicenseKeyId(id);
+      try {
+        await env.DB.batch([
+          env.DB.prepare(`INSERT INTO license_keys(id,key_hash,key_suffix,status,label,customer_ref,refund_days,product_id,created_at,sent_at)
+            VALUES(?,?,?,'unused','购买页自动发货',?,?,?,?,?)`).bind(keyId, await hmacHex(env.KEY_PEPPER, plaintext), plaintext.slice(-4), id, Number(row.refund_days), env.PRODUCT_ID, time, time),
+          env.DB.prepare(`UPDATE orders SET status='delivered',paid_at=?,delivered_at=?,updated_at=?,admin_reason='',license_key_id=?,delivery_key_version='derived-v1'
+            WHERE id=? AND status='payment_submitted'`).bind(time, time, time, keyId, id),
+          audit(env, keyId, "key_created", "admin", "semi-automatic order delivery", {refund_days: row.refund_days}),
+          audit(env, keyId, "key_sent", "system", "displayed on authenticated order page"),
+          orderAudit(env, id, "payment_confirmed", "admin", reason),
+          orderAudit(env, id, "key_issued", "system", "semi-automatic delivery", {license_key_id: keyId}),
+          orderAudit(env, id, "order_delivered", "system", "activation key available on authenticated order page"),
+        ]);
+      } catch (error) {
+        const fresh = await env.DB.prepare("SELECT status,delivery_key_version FROM orders WHERE id=?").bind(id).first<Row>();
+        if (fresh?.status !== "delivered" || fresh.delivery_key_version !== "derived-v1") throw error;
+      }
+    }
+  } else if (action === "confirm-payment") {
     if (!["paid", "key_issued", "delivered", "refund_requested", "refunded"].includes(current)) {
       if (current !== "payment_submitted") throw new HttpError(409, "INVALID_STATE", `payment cannot be confirmed from ${current}`);
       await env.DB.batch([
@@ -522,7 +559,7 @@ async function adminOrderAction(request: Request, env: Env, id: string, action: 
   } else throw new HttpError(404, "UNKNOWN_ACTION", "unknown order action");
   row = (await env.DB.prepare("SELECT * FROM orders WHERE id=?").bind(id).first<Row>())!;
   const response: Row = {ok: true, order: await getAdminOrder(id, env)};
-  if (plaintext) {
+  if (plaintext && action !== "confirm-and-deliver") {
     response.activation_key = plaintext;
     response.warning = "明文密钥只返回这一次，请发送后立即标记订单已交付。";
   }
@@ -648,6 +685,10 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (request.method === "POST" && path === "/api/activate") return activate(request, env);
   if (request.method === "POST" && path === "/api/lease/refresh") return refreshLease(request, env);
   if (request.method === "POST" && path === "/api/refunds/request") return requestClientRefund(request, env);
+
+  if (request.method === "GET" && (path === "/admin/control.js" || path === "/admin/control.css")) {
+    return staticAsset(request, env, path);
+  }
 
   if (path.startsWith("/admin/") && path !== "/admin/index.html") {
     await requireAdmin(request, env);

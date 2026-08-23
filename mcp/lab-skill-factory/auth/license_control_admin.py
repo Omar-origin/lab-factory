@@ -152,6 +152,7 @@ def main() -> int:
     order_purge = order_sub.add_parser("purge-personal-data", help="Delete expired contact and payment-verification fields")
     order_purge.add_argument("--retention-days", type=int, default=90)
     for action, help_text in (
+        ("confirm-and-deliver", "Confirm payment and automatically deliver the order key"),
         ("confirm-payment", "Confirm a manually verified payment"),
         ("reject-payment", "Reject an unverifiable payment claim"),
         ("issue", "Issue the order activation key; plaintext appears once"),

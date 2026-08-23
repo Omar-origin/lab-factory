@@ -8,6 +8,7 @@ import os
 import sys
 import urllib.error
 import urllib.request
+import uuid
 from pathlib import Path
 
 MCP_DIR = Path(__file__).resolve().parents[2]
@@ -27,7 +28,7 @@ def call(base: str, method: str, path: str, payload: dict | None = None, headers
     try:
         with urllib.request.urlopen(request, timeout=15) as response:
             raw = response.read()
-            if response.headers.get_content_type().startswith("image/"):
+            if response.headers.get_content_type() != "application/json":
                 return response.status, raw
             return response.status, json.loads(raw)
     except urllib.error.HTTPError as exc:
@@ -56,6 +57,12 @@ def main() -> int:
     status, qr = call(base, "GET", "/payment-assets/alipay.png")
     check(status == 200 and isinstance(qr, bytes) and len(qr) > 1000, "Alipay QR asset failed")
     tests += 1
+    status, admin_script = call(base, "GET", "/admin/control.js")
+    check(status == 200 and isinstance(admin_script, bytes) and b"confirm-and-deliver" in admin_script, "admin static assets were blocked by API authentication")
+    tests += 1
+    status, unauthenticated = call(base, "GET", "/admin/orders")
+    check(status == 401 and unauthenticated["error"]["code"] == "ADMIN_AUTH_REQUIRED", "admin API was exposed without authentication")
+    tests += 1
 
     status, created = call(base, "POST", "/api/orders", {"contact": "worker-test@example.test", "payment_provider": "alipay"})
     check(status == 201 and created["order"]["status"] == "payment_pending", "order creation failed")
@@ -70,17 +77,15 @@ def main() -> int:
     check(status == 200 and repeated["order"]["status"] == "payment_submitted", "payment submission was not idempotent")
     tests += 1
 
-    status, confirmed = call(base, "POST", f"/admin/orders/{order_id}/confirm-payment", {"reason": "worker test"}, admin_headers)
-    check(status == 200 and confirmed["order"]["status"] == "paid", "payment confirmation failed")
+    status, delivered = call(base, "POST", f"/admin/orders/{order_id}/confirm-and-deliver", {"reason": "worker test"}, admin_headers)
+    check(status == 200 and delivered["order"]["status"] == "delivered" and "activation_key" not in delivered, "semi-automatic delivery failed")
     tests += 1
-    status, issued = call(base, "POST", f"/admin/orders/{order_id}/issue", {}, admin_headers)
-    check(status == 200 and issued["activation_key"].startswith("LF-"), "key issue failed")
-    activation_key = issued["activation_key"]
-    status, issued_again = call(base, "POST", f"/admin/orders/{order_id}/issue", {}, admin_headers)
-    check(status == 200 and "activation_key" not in issued_again, "duplicate issue returned/generated plaintext")
+    status, delivered_again = call(base, "POST", f"/admin/orders/{order_id}/confirm-and-deliver", {"reason": "duplicate"}, admin_headers)
+    check(status == 200 and delivered_again["order"]["status"] == "delivered", "semi-automatic delivery was not idempotent")
     tests += 1
-    status, delivered = call(base, "POST", f"/admin/orders/{order_id}/deliver", {"reason": "worker test delivery"}, admin_headers)
-    check(status == 200 and delivered["order"]["status"] == "delivered", "delivery failed")
+    status, public_order = call(base, "GET", "/api/order", headers=order_headers)
+    activation_key = public_order["order"].get("activation_key", "")
+    check(status == 200 and activation_key.startswith("LF-") and activation_key.endswith(public_order["order"]["license"]["key_suffix"]), "authenticated order page did not receive its key")
     tests += 1
 
     device = create_device_key()
@@ -95,7 +100,7 @@ def main() -> int:
     verify_lease(activated["lease"], public_record, install_id=install_id, product_id="lab-factory-1")
     tests += 1
 
-    proof = {"action": "refresh", "activation_token": activated["activation_token"], "install_id": install_id, "timestamp": utc_now(), "nonce": "worker-refresh-1"}
+    proof = {"action": "refresh", "activation_token": activated["activation_token"], "install_id": install_id, "timestamp": utc_now(), "nonce": "worker-refresh-" + uuid.uuid4().hex}
     status, refreshed = call(base, "POST", "/api/lease/refresh", {
         "activation_token": activated["activation_token"], "proof": proof, "signature": sign_device_message(device, proof),
     })
@@ -106,7 +111,7 @@ def main() -> int:
     status, refund = call(base, "POST", "/api/order/refund", {"reason": "worker test refund"}, order_headers)
     check(status == 200 and refund["order"]["status"] == "refund_requested", "refund request failed")
     tests += 1
-    blocked_proof = {"action": "refresh", "activation_token": activated["activation_token"], "install_id": install_id, "timestamp": utc_now(), "nonce": "worker-refresh-blocked"}
+    blocked_proof = {"action": "refresh", "activation_token": activated["activation_token"], "install_id": install_id, "timestamp": utc_now(), "nonce": "worker-refresh-blocked-" + uuid.uuid4().hex}
     status, blocked = call(base, "POST", "/api/lease/refresh", {
         "activation_token": activated["activation_token"], "proof": blocked_proof, "signature": sign_device_message(device, blocked_proof),
     })

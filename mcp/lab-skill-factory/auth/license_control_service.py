@@ -60,6 +60,11 @@ def generate_activation_key() -> str:
     return "LF-" + "-".join(encoded[index:index + 4] for index in range(0, len(encoded), 4))
 
 
+def activation_key_from_bytes(value: bytes) -> str:
+    encoded = base64.b32encode(value[:20]).decode("ascii").rstrip("=")
+    return "LF-" + "-".join(encoded[index:index + 4] for index in range(0, len(encoded), 4))
+
+
 def bounded_text(value: Any, field: str, maximum: int, *, required: bool = False) -> str:
     if value is None:
         value = ""
@@ -212,10 +217,26 @@ class ControlStore:
                 create index if not exists order_audit_created on order_audit_events(order_id, created_at desc);
                 """
             )
+            order_columns = {str(row[1]) for row in conn.execute("pragma table_info(orders)")}
+            if "delivery_key_version" not in order_columns:
+                conn.execute("alter table orders add column delivery_key_version text not null default ''")
 
     def _key_hash(self, activation_key: str) -> str:
         normalized = normalize_activation_key(activation_key)
         return secret_hmac(self.key_pepper, normalized)
+
+    def _order_activation_key(self, order_id: str) -> str:
+        digest = hmac.new(
+            self.key_pepper.encode("utf-8"),
+            f"order-delivery:v1:{order_id}".encode("utf-8"),
+            hashlib.sha256,
+        ).digest()
+        return activation_key_from_bytes(digest)
+
+    @staticmethod
+    def _order_license_key_id(order_id: str) -> str:
+        digest = hashlib.sha256(f"order-license:v1:{order_id}".encode("utf-8")).hexdigest()
+        return "lfkey_" + digest[:32]
 
     def _activation_token(self, row: sqlite3.Row, install_id: str, public_key: str) -> str:
         material = f"{row['id']}\n{install_id}\n{public_key}"
@@ -567,7 +588,7 @@ class ControlStore:
             },
             "payment_providers": [provider.public_config() for provider in self.payment_providers.values()],
             "support_contact": self.support_contact,
-            "delivery_commitment": "人工核款后 12 小时内发送激活密钥",
+            "delivery_commitment": "人工核款确认后，订单页自动显示激活密钥",
         }
 
     @staticmethod
@@ -601,6 +622,8 @@ class ControlStore:
                     "refund_deadline": key["refund_deadline"],
                     "activated_at": key["activated_at"],
                 }
+        if public and row["status"] == "delivered" and row["delivery_key_version"] == "derived-v1":
+            value["activation_key"] = self._order_activation_key(str(row["id"]))
         return value
 
     def create_order(self, *, contact: str, payment_provider: str) -> dict[str, Any]:
@@ -761,7 +784,34 @@ class ControlStore:
             conn.execute("begin immediate")
             row = self._order_row(conn, order_id)
             current, now = str(row["status"]), utc_now()
-            if action == "confirm-payment":
+            if action == "confirm-and-deliver":
+                if current == "delivered" and row["delivery_key_version"] == "derived-v1":
+                    pass
+                elif current != "payment_submitted":
+                    raise ControlError(409, "INVALID_STATE", f"order cannot be auto-delivered from {current}")
+                else:
+                    plaintext_key = self._order_activation_key(order_id)
+                    key_id = self._order_license_key_id(order_id)
+                    conn.execute(
+                        """insert into license_keys
+                        (id,key_hash,key_suffix,status,label,customer_ref,refund_days,product_id,created_at,sent_at)
+                        values(?,?,?,'unused','购买页自动发货',?,?,?,?,?)""",
+                        (
+                            key_id, self._key_hash(plaintext_key), plaintext_key[-4:], order_id,
+                            int(row["refund_days"]), self.product_id, now, now,
+                        ),
+                    )
+                    conn.execute(
+                        """update orders set status='delivered',paid_at=?,delivered_at=?,updated_at=?,admin_reason='',
+                        license_key_id=?,delivery_key_version='derived-v1' where id=? and status='payment_submitted'""",
+                        (now, now, now, key_id, order_id),
+                    )
+                    self._audit(conn, key_id, "key_created", "admin", "semi-automatic order delivery", {"refund_days": row["refund_days"]})
+                    self._audit(conn, key_id, "key_sent", "system", "displayed on authenticated order page")
+                    self._order_audit(conn, order_id, "payment_confirmed", "admin", reason)
+                    self._order_audit(conn, order_id, "key_issued", "system", "semi-automatic delivery", {"license_key_id": key_id})
+                    self._order_audit(conn, order_id, "order_delivered", "system", "activation key available on authenticated order page")
+            elif action == "confirm-payment":
                 if current in {"paid", "key_issued", "delivered", "refund_requested", "refunded"}:
                     pass
                 elif current != "payment_submitted":
@@ -833,7 +883,7 @@ class ControlStore:
         finally:
             conn.close()
         result = {"ok": True, "order": self.get_order(order_id)}
-        if plaintext_key:
+        if plaintext_key and action != "confirm-and-deliver":
             result.update({
                 "activation_key": plaintext_key,
                 "warning": "明文密钥只返回这一次，请发送后立即标记订单已交付。",

@@ -49,7 +49,7 @@ async function loadOrders(){
     tr.append(textCell(order.payment_reference?`${order.payment_reference} · ${order.payment_claimed_at||""}`:"—"));
     tr.append(textCell(order.contact));
     const actions=document.createElement("td"),group=document.createElement("div");group.className="row-actions";group.append(orderActionButton("详情","show",order));
-    if(order.status==="payment_submitted"){group.append(orderActionButton("确认到账","confirm-payment",order),orderActionButton("驳回","reject-payment",order))}
+    if(order.status==="payment_submitted"){group.append(orderActionButton("确认到账并自动发货","confirm-and-deliver",order),orderActionButton("驳回","reject-payment",order))}
     if(order.status==="paid")group.append(orderActionButton("签发密钥","issue",order));
     if(order.status==="key_issued")group.append(orderActionButton("标记交付","deliver",order));
     if(["paid","key_issued","delivered","refund_requested"].includes(order.status))group.append(orderActionButton("原路退款已完成","refund",order));
@@ -60,7 +60,7 @@ function orderActionButton(label,action,order){const button=document.createEleme
 async function runOrderAction(action,order){
   try{
     if(action==="show"){const body=await api(`/admin/orders/${order.id}`);showOrderDetail(body.order);return}
-    const names={"confirm-payment":"确认付款","reject-payment":"驳回付款",issue:"签发密钥",deliver:"标记交付",refund:"确认原路退款已完成"};
+    const names={"confirm-and-deliver":"确认到账并自动发货","confirm-payment":"确认付款","reject-payment":"驳回付款",issue:"签发密钥",deliver:"标记交付",refund:"确认原路退款已完成"};
     if(!confirm(`确认${names[action]}订单 ${order.id.slice(-8)}？`))return;
     const reason=action==="issue"?"":prompt("填写操作原因（会进入审计记录）：","")??"";
     const body=await api(`/admin/orders/${order.id}/${action}`,{method:"POST",body:JSON.stringify({reason})});

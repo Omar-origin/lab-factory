@@ -3,7 +3,7 @@
 公开购买页与密钥中控由同一个服务承载：
 
 - `/buy`：购买、付款信息提交、订单查询和退款申请。
-- `/admin`：人工核款、一次性签发密钥、交付、原路退款和封禁。
+- `/admin`：人工核款、一键自动发货、原路退款和封禁；保留拆分签发/交付作为异常恢复入口。
 - GitHub README 只应链接到 `/buy`，不要使用 GitHub Issues、Discussions 或 Pages 处理付款、联系方式和退款。
 
 ## 首发支付配置
@@ -24,11 +24,11 @@ export LAB_CONTROL_ALIPAY_INSTRUCTIONS="使用支付宝扫描经营码并支付 
 ## 订单流程
 
 ```text
-payment_pending → payment_submitted → paid → key_issued → delivered
+payment_pending → payment_submitted ──确认到账并自动发货──→ delivered
         ↑                └→ payment_rejected
         └───────────────────────┘（用户修正后重新提交）
 
-paid / key_issued / delivered → refund_requested → refunded
+delivered → refund_requested → refunded
 ```
 
 操作顺序：
@@ -36,21 +36,19 @@ paid / key_issued / delivered → refund_requested → refunded
 1. 用户创建订单，浏览器获得 256-bit 随机查询 Token；数据库只保存 Token 的 SHA-256。
 2. 用户通过经营收款渠道付款，只提交交易号/备注和付款时间，不上传截图。
 3. 卖家在支付平台的商户记录中核对金额、时间和交易信息。
-4. 确认到账后签发密钥。明文只返回一次，复制后通过订单联系方式发送。
-5. 发送成功后标记交付。不要在尚未发送时提前标记。
+4. 点击“确认到账并自动发货”。系统在同一事务中确认付款、创建唯一密钥并标记交付。
+5. 用户订单页每 10 秒自动刷新；只有持有该订单 256-bit Token 的用户能看到完整密钥。D1 不保存自动交付密钥明文，Worker 按订单从卖家 Secret 确定性派生。
 6. 退款时先在原支付交易中完成原路退款，再在中控确认退款；关联密钥随即停止续租，现有租约最长 24 小时后失效。
 
 网页中控提供所有操作。也可以使用 CLI：
 
 ```bash
 python3 mcp/lab-skill-factory/auth/license_control_admin.py orders list --status payment_submitted
-python3 mcp/lab-skill-factory/auth/license_control_admin.py orders confirm-payment lforder_xxx --reason "商户记录已核对"
-python3 mcp/lab-skill-factory/auth/license_control_admin.py orders issue lforder_xxx
-python3 mcp/lab-skill-factory/auth/license_control_admin.py orders deliver lforder_xxx
+python3 mcp/lab-skill-factory/auth/license_control_admin.py orders confirm-and-deliver lforder_xxx --reason "商户记录已核对"
 python3 mcp/lab-skill-factory/auth/license_control_admin.py orders refund lforder_xxx --reason "原路退款已完成"
 ```
 
-重复确认付款、签发、交付和退款是幂等操作。重复执行 `issue` 不会生成第二把密钥，也不会再次返回明文。
+重复执行 `confirm-and-deliver` 和退款是幂等操作，不会生成第二把密钥。旧的 `confirm-payment`、`issue`、`deliver` 命令只用于异常恢复，不作为日常订单流程。
 
 ## Token、隐私和清理
 

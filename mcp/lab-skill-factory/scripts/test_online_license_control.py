@@ -166,22 +166,28 @@ def main() -> int:
         check(repeated_status == 200 and repeated_body["order"]["status"] == "payment_submitted", "payment submission is not idempotent")
 
         order_id = order_created["order"]["id"]
-        confirmed = store.admin_order_action(order_id, "confirm-payment", "verified in merchant record")
-        store.admin_order_action(order_id, "confirm-payment", "duplicate retry")
+        delivered = store.admin_order_action(order_id, "confirm-and-deliver", "verified in merchant record")
+        store.admin_order_action(order_id, "confirm-and-deliver", "duplicate retry")
         tests += 1
-        check(confirmed["order"]["status"] == "paid", "manual payment confirmation failed")
-        issued = store.admin_order_action(order_id, "issue")
-        issued_again = store.admin_order_action(order_id, "issue")
+        check(delivered["order"]["status"] == "delivered" and "activation_key" not in delivered, "semi-automatic delivery failed")
+        public_order = store.get_order_by_token(order_token)
+        order_activation_key = public_order.get("activation_key", "")
         tests += 1
-        check(issued["activation_key"].startswith("LF-") and "activation_key" not in issued_again, "order issue was not one-time/idempotent")
+        check(order_activation_key.startswith("LF-") and order_activation_key.endswith(public_order["license"]["key_suffix"]), "authenticated order lookup did not reveal its key")
         with store.connection() as conn:
             linked_key_count = conn.execute("select count(*) from license_keys where customer_ref=?", (order_id,)).fetchone()[0]
+            serialized_delivery = " ".join(
+                str(value)
+                for table in ("orders", "license_keys")
+                for row in conn.execute(f"select * from {table}")
+                for value in row
+            )
         check(linked_key_count == 1, "duplicate order issue created multiple keys")
-        delivered = store.admin_order_action(order_id, "deliver")
+        check(order_activation_key not in serialized_delivery, "raw automatically delivered key was stored in SQLite")
         order_device = create_device_key()
-        store.activate(issued["activation_key"], "install_order", order_device["public_key"])
+        store.activate(order_activation_key, "install_order", order_device["public_key"])
         tests += 1
-        check(delivered["order"]["status"] == "delivered", "order delivery failed")
+        check(store.get_order(order_id)["status"] == "delivered", "order delivery state changed unexpectedly")
         refund_status, refund_body = post(base_url + "/api/order/refund", {"reason": "changed mind"}, order_token=order_token)
         tests += 1
         check(refund_status == 200 and refund_body["order"]["status"] == "refund_requested", "order-page refund request failed")
