@@ -27,7 +27,7 @@ async function loadKeys(){
   keys.forEach(key=>{
     const tr=document.createElement("tr");tr.append(textCell(`•••• ${key.key_suffix}`));
     const status=document.createElement("td"),badge=document.createElement("span");badge.className=`badge ${key.status}`;badge.textContent=stateLabels[key.status]||key.status;status.append(badge);tr.append(status);
-    tr.append(textCell(key.bound?key.install_id:"未绑定"));tr.append(textCell(key.refund_deadline||`${key.refund_days} 天（激活后起算）`));tr.append(textCell(key.last_seen_at||"—"));
+    tr.append(textCell(key.bound?key.install_id:"未绑定"));tr.append(textCell(key.refund_deadline||`${key.refund_days} 天（异常售后参考）`));tr.append(textCell(key.last_seen_at||"—"));
     const actions=document.createElement("td"),group=document.createElement("div");group.className="row-actions";group.append(actionButton("详情","show",key));
     if(["unused","active","refund_requested"].includes(key.status))group.append(actionButton("封禁","ban",key));
     if(["active","refund_requested","banned"].includes(key.status))group.append(actionButton("退款","refund",key));

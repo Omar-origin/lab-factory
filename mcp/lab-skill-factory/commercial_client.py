@@ -321,23 +321,11 @@ def refresh_online_lease(credential: dict[str, Any]) -> tuple[dict[str, Any], di
 
 
 def request_refund() -> dict[str, Any]:
-    credential = CredentialStore().get()
-    if not credential or credential.get("credential_type") != "online_lease":
-        raise ValueError("this installation has no online license eligible for a refund request")
-    url = control_url(credential)
-    if not url:
-        raise ValueError("authorization control URL is not configured")
-    result = post_json(f"{url}/api/refunds/request", _online_proof(credential, "refund_request"))
-    metadata = read_json(LICENSE_METADATA_FILE)
-    metadata.update({"status": "REFUND_REQUESTED", "refund_requested_at": utc_now()})
-    if metadata.get("credential_backend") != "keyring":
-        metadata["license"] = credential
-    write_private_json(LICENSE_METADATA_FILE, metadata)
     return {
         "ok": True,
-        "status": result.get("status"),
-        "refund_deadline": result.get("refund_deadline"),
-        "message": "退款申请已提交，中控已停止签发新租约；现有租约最迟在 24 小时内失效。",
+        "status": "AFTER_SALES_REQUIRED",
+        "support_contact": "售后QQ群：923937311",
+        "message": "数字化商品密钥交付后原则上不支持无理由退款。重复付款、无法激活且无法修复、重大功能缺陷或法律另有规定的情形，请联系售后QQ群 923937311 人工处理。",
     }
 
 

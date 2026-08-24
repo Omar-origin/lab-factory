@@ -504,22 +504,12 @@ class ControlStore:
         return {"ok": True, "status": "active", "lease": lease}
 
     def request_refund(self, payload: dict[str, Any]) -> dict[str, Any]:
-        row, proof = self._authenticated_request(payload, "refund_request")
-        if row["status"] == "refund_requested":
-            return {"ok": True, "status": "refund_requested", "refund_deadline": row["refund_deadline"]}
-        if row["status"] != "active":
-            raise ControlError(409, "INVALID_STATE", f"refund cannot be requested from {row['status']}")
-        if not row["refund_deadline"] or proof["now"] > parse_utc(str(row["refund_deadline"])):
-            raise ControlError(409, "REFUND_WINDOW_CLOSED", "the no-reason refund window has closed")
-        with self.connection() as conn:
-            with conn:
-                self._consume_nonce(conn, row, proof["nonce"], proof["now"])
-                conn.execute(
-                    "update license_keys set status='refund_requested',revoked_at=?,revoke_reason='customer refund request' where id=? and status='active'",
-                    (proof["now"].isoformat(), row["id"]),
-                )
-                self._audit(conn, row["id"], "refund_requested", "client", "within no-reason refund window")
-        return {"ok": True, "status": "refund_requested", "refund_deadline": row["refund_deadline"]}
+        self._authenticated_request(payload, "refund_request")
+        raise ControlError(
+            409,
+            "SELF_SERVICE_REFUND_UNAVAILABLE",
+            "数字化商品交付后不提供自助无理由退款。重复付款、无法激活或重大功能故障请联系售后QQ群 923937311 处理。",
+        )
 
     def admin_action(self, key_id: str, action: str, reason: str = "") -> dict[str, Any]:
         reason = bounded_text(reason, "reason", 500)
@@ -584,6 +574,8 @@ class ControlStore:
                 "amount_cents": self.price_cents,
                 "currency": "CNY",
                 "refund_days": self.refund_days,
+                "self_service_refunds": False,
+                "refund_policy": "数字化商品密钥交付后原则上不支持无理由退款；重复付款、无法激活且无法修复、重大功能缺陷或法律另有规定的情形，请联系售后人工处理。",
                 "entitlement": "当前 beta 永久使用，30 天内可更新，升级正式创始版抵扣 9.9 元",
             },
             "payment_providers": [provider.public_config() for provider in self.payment_providers.values()],
@@ -703,46 +695,14 @@ class ControlStore:
         return {"ok": True, "order": self.get_order_by_token(status_token)}
 
     def request_order_refund(self, status_token: str, *, reason: str = "") -> dict[str, Any]:
-        reason = bounded_text(reason, "reason", 500)
-        conn = self.connect()
-        try:
-            conn.execute("begin immediate")
-            row = self._order_by_token(conn, status_token)
-            current = str(row["status"])
-            if current == "refund_requested":
-                conn.commit()
-                return {"ok": True, "order": self.get_order_by_token(status_token)}
-            if current not in {"paid", "key_issued", "delivered"}:
-                raise ControlError(409, "INVALID_STATE", f"refund cannot be requested from {current}")
-            key = None
-            if row["license_key_id"]:
-                key = conn.execute("select * from license_keys where id=?", (row["license_key_id"],)).fetchone()
-                if not key:
-                    raise ControlError(409, "LICENSE_KEY_MISSING", "linked license key is missing")
-                if key["status"] == "active" and key["refund_deadline"]:
-                    if datetime.now(timezone.utc) > parse_utc(str(key["refund_deadline"])):
-                        raise ControlError(409, "REFUND_WINDOW_CLOSED", "the no-reason refund window has closed")
-                if key["status"] not in {"unused", "active", "refund_requested"}:
-                    raise ControlError(409, "INVALID_STATE", f"linked key is {key['status']}")
-            now = utc_now()
-            conn.execute(
-                "update orders set status='refund_requested',refund_requested_at=?,updated_at=? where id=?",
-                (now, now, row["id"]),
-            )
-            self._order_audit(conn, row["id"], "refund_requested", "customer", reason or "no-reason refund")
-            if key and key["status"] != "refund_requested":
-                conn.execute(
-                    "update license_keys set status='refund_requested',revoked_at=?,revoke_reason=? where id=?",
-                    (now, "customer order refund request", key["id"]),
-                )
-                self._audit(conn, key["id"], "refund_requested", "customer", "via order page")
-            conn.commit()
-        except Exception:
-            conn.rollback()
-            raise
-        finally:
-            conn.close()
-        return {"ok": True, "order": self.get_order_by_token(status_token)}
+        bounded_text(reason, "reason", 500)
+        with self.connection() as conn:
+            self._order_by_token(conn, status_token)
+        raise ControlError(
+            409,
+            "SELF_SERVICE_REFUND_UNAVAILABLE",
+            "数字化商品交付后不提供自助无理由退款。重复付款、无法激活或重大功能故障请联系售后QQ群 923937311 处理。",
+        )
 
     def list_orders(self, status: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
         if status and status not in ORDER_STATES:

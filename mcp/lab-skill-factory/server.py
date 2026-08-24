@@ -397,8 +397,6 @@ def tool_deactivate(_: dict[str, Any]) -> dict[str, Any]:
 
 
 def tool_request_refund(args: dict[str, Any]) -> dict[str, Any]:
-    if args.get("confirm_refund_request") is not True:
-        raise ToolError("退款申请会立即停止签发新租约，必须明确设置 confirm_refund_request=true。")
     try:
         return commercial_client.request_refund()
     except Exception as exc:
@@ -1175,14 +1173,9 @@ TOOLS: dict[str, dict[str, Any]] = {
         "handler": tool_deactivate,
     },
     "lab_factory_request_refund": {
-        "description": "在密钥配置的 3 天或 7 天无理由退款期限内提交退款申请；提交后停止签发新租约。",
-        "inputSchema": {
-            "type": "object",
-            "required": ["confirm_refund_request"],
-            "properties": {"confirm_refund_request": {"type": "boolean", "const": True}},
-            "additionalProperties": False,
-        },
-        "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True, "openWorldHint": True},
+        "description": "获取数字化商品的售后与异常退款处理方式；不会自动停用密钥或提交退款。",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False},
         "handler": tool_request_refund,
     },
     "lab_factory_telemetry_settings": {

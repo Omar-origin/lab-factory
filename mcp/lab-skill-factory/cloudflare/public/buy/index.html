@@ -1,109 +1,32 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Lab Factory 抢先体验购买、订单查询与退款入口">
-  <title>Lab Factory · 抢先体验</title>
-  <link rel="stylesheet" href="/buy/purchase.css">
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Lab Factory 本地模板编译、格式安全与材料整理工具。查看产品能力、购买抢先体验并查询订单。"><meta name="theme-color" content="#101310">
+  <title>Lab Factory · 把格式劳动留给工具</title><link rel="stylesheet" href="/buy/purchase.css">
 </head>
 <body>
-  <div class="paper-noise" aria-hidden="true"></div>
-  <header class="topbar">
-    <a class="wordmark" href="/buy"><i>LF</i><span>LAB FACTORY</span></a>
-    <nav aria-label="页面导航"><a href="#product">产品</a><a href="#checkout">购买</a><a href="#policy">规则</a><button id="openLookup" type="button">查询订单</button></nav>
-  </header>
-
-  <main>
-    <section class="hero" id="product">
-      <div class="hero-copy reveal">
-        <p class="eyebrow">BETA EARLY ACCESS / 001</p>
-        <h1>把格式劳动<br>交给本地工具。</h1>
-        <p class="lede">Lab Factory 是本地运行的模板编译、格式安全、材料整理与用户审阅工具。它不会替你绕过课程规则，报告材料也不会上传到购买网站。</p>
-        <div class="hero-actions"><a class="button primary" href="#checkout">¥9.9 立即体验</a><a class="button quiet" href="#policy">先看退款规则</a></div>
-        <p class="support-line">售后与激活协助 · QQ群 <strong id="heroSupport">923937311</strong></p>
-      </div>
-      <aside class="ticket reveal delay-1" aria-label="产品权益">
-        <div class="ticket-head"><span>FOUNDING BETA</span><strong id="price">¥9.90</strong></div>
-        <div class="barcode" aria-hidden="true"></div>
-        <dl>
-          <div><dt>使用权</dt><dd>当前 beta 永久</dd></div>
-          <div><dt>更新</dt><dd>购买后 30 天</dd></div>
-          <div><dt>升级</dt><dd>正式创始版抵扣 ¥9.9</dd></div>
-          <div><dt>退款</dt><dd id="refundSummary">7 天无理由</dd></div>
-        </dl>
-        <p>一个密钥绑定一个安装。卖家确认到账后，订单页自动发货。</p>
-      </aside>
+  <a class="skip-link" href="#main">跳到主要内容</a>
+  <header class="site-header"><a class="wordmark" href="/buy" aria-label="Lab Factory 首页"><span class="mark">LF</span><span>LAB FACTORY</span></a><nav aria-label="页面导航"><a href="#capabilities">产品能力</a><a href="#proof">成果展示</a><a href="#process">使用流程</a><a href="#checkout">购买</a><button id="openLookup" type="button">查询订单</button></nav></header>
+  <main id="main">
+    <section class="hero">
+      <div class="hero-copy reveal"><p class="kicker"><span></span>LOCAL-FIRST REPORT TOOLKIT / BETA 001</p><h1>内容由你判断，<br><em>格式交给工具。</em></h1><p class="lede">Lab Factory 在本地完成模板编译、格式检查和材料整理。报告正文不经过购买网站，每一步都留给你审阅和确认。</p><div class="hero-actions"><a class="button primary" href="#checkout">¥9.9 抢先体验</a><a class="text-link" href="#capabilities">了解工作方式 <span>↘</span></a></div><p class="support-line">激活与售后支持 <strong>QQ群 <span id="heroSupport">923937311</span></strong></p></div>
+      <div class="hero-system reveal delay-1" aria-label="Lab Factory 本地工作流示意"><div class="system-top"><span>LOCAL PIPELINE</span><span class="live"><i></i> READY</span></div><div class="system-canvas"><div class="file-card input"><span>01 / INPUT</span><b>课程模板</b><small>.docx / .pdf</small></div><div class="flow-line"><i></i></div><div class="core"><span>LF</span><b>LOCAL<br>ENGINE</b></div><div class="flow-line"><i></i></div><div class="file-card output"><span>03 / REVIEW</span><b>可审阅成果</b><small>结构与格式已整理</small></div></div><div class="system-log"><span>✓ 模板结构保留</span><span>✓ 报告材料不上云</span><span>✓ 输出前由用户确认</span></div></div><div class="hero-index" aria-hidden="true">001</div>
     </section>
-
-    <section class="checkout-section" id="checkout">
-      <div class="section-title"><span>CHECKOUT / 02</span><h2>三步完成购买</h2><p>不注册账号，不上传付款截图。</p></div>
-      <div class="checkout-grid">
-        <ol class="steps" aria-label="购买步骤"><li class="active" data-step="1"><b>01</b><span>创建订单</span></li><li data-step="2"><b>02</b><span>提交付款信息</span></li><li data-step="3"><b>03</b><span>自动取货</span></li></ol>
-
-        <div class="checkout-card">
-          <section id="createStep">
-            <p class="card-code">ORDER / NEW</p><h3>创建私密订单</h3>
-            <form id="orderForm">
-              <label>接收密钥的联系方式<input name="contact" required maxlength="160" autocomplete="off" placeholder="微信号、邮箱或其他私密联系方式"><small>只用于核款与交付，订单页仅显示掩码。</small></label>
-              <fieldset><legend>付款方式</legend><div id="providerChoices" class="providers"><p class="muted">正在读取可用付款方式…</p></div></fieldset>
-              <label class="agreement"><input type="checkbox" required><span>我已阅读退款、隐私和学术诚信说明，并确认使用经营收款渠道完成真实交易。</span></label>
-              <button class="button primary full" type="submit">创建 ¥9.9 订单</button>
-            </form>
-          </section>
-
-          <section id="paymentStep" hidden>
-            <p class="card-code">PAYMENT / MANUAL CHECK</p><h3>完成付款并提交核验</h3>
-            <div class="order-strip"><span>订单号</span><code id="orderId"></code></div>
-            <div id="paymentInstructions" class="payment-instructions"></div>
-            <p class="notice">请核对收款方为卖家公布的经营主体。不要向任何临时个人账号或代收账号转账。</p>
-            <form id="paymentForm">
-              <label>付款交易号或备注<input name="payment_reference" required maxlength="120" autocomplete="off" placeholder="用于人工核款，不要填写支付密码"></label>
-              <label>付款时间<input name="paid_at" type="datetime-local" required></label>
-              <button class="button primary full" type="submit">我已付款，提交核验</button>
-            </form>
-          </section>
-
-          <section id="statusStep" hidden>
-            <p class="card-code">ORDER / STATUS</p><div class="status-heading"><h3 id="statusTitle">正在查询</h3><span id="statusBadge" class="status-badge"></span></div>
-            <p id="statusMessage" class="status-message"></p>
-            <dl id="statusFields" class="status-fields"></dl>
-            <div id="deliveryKeyBox" class="delivery-key" hidden>
-              <span>你的激活密钥</span><code id="deliveryKeyValue"></code>
-              <button id="copyDeliveryKey" type="button">复制激活密钥</button>
-              <p>请勿公开转发。首次激活后，这把密钥会绑定当前安装。</p>
-            </div>
-            <div class="token-box"><span>订单查询 Token</span><code id="statusToken"></code><button id="copyToken" type="button">复制</button></div>
-            <p class="token-warning">Token 等同订单查询凭证。本站不设账号，请妥善保存且不要公开。</p>
-            <div class="status-actions"><button id="refreshOrder" class="button" type="button">刷新状态</button><button id="requestRefund" class="button danger" type="button" hidden>申请退款</button></div>
-          </section>
-        </div>
-      </div>
-    </section>
-
-    <section class="principles" aria-label="产品原则">
-      <article><b>01</b><h3>完全本地</h3><p>购买层不接触报告正文、模板、课程材料、截图和本地文件路径。</p></article>
-      <article><b>02</b><h3>安装绑定</h3><p>一个密钥绑定一个安装，用于阻止普通转发；不读取硬件指纹。</p></article>
-      <article><b>03</b><h3>半自动发货</h3><p>卖家人工核对支付宝账单；确认到账后，订单页自动显示密钥。</p></article>
-    </section>
-
-    <section class="policy" id="policy">
-      <div class="section-title"><span>TERMS / 03</span><h2>交易前请读清楚</h2></div>
-      <div class="policy-grid">
-        <article><h3>退款规则</h3><p>激活后 <span id="refundDays">7</span> 天内可以申请无理由退款。卖家在支付渠道完成原路退款后，激活密钥将被封禁；已签发的本地租约最迟 24 小时后失效。违规或欺诈交易不适用无理由退款。</p></article>
-        <article><h3>隐私说明</h3><p>订单保存联系方式、支付渠道、交易核验信息和授权状态，不收集付款截图。报告内容始终留在本地。联系方式应在交付完成 90 天后删除；非个人化对账记录可继续保留。</p></article>
-        <article><h3>学术诚信</h3><p>本产品用于模板编译、格式检查、材料整理与用户审阅。不得用于冒充完全人工完成、代写、伪造数据或绕过学校及课程规定。</p></article>
-        <article><h3>服务边界</h3><p>密钥需要定期从中控取得最长 24 小时的签名租约。共享电脑和完整克隆环境不在防护范围内。具体支持入口：<strong id="supportContact">售后QQ群：923937311</strong>。</p></article>
-      </div>
-    </section>
+    <section class="trust-rail" aria-label="产品承诺"><div><b>LOCAL</b><span>核心处理完全本地</span></div><div><b>PRIVATE</b><span>购买层不读取报告</span></div><div><b>BOUND</b><span>一把密钥绑定一处安装</span></div><div><b>HUMAN</b><span>人工核款与 QQ 售后</span></div></section>
+    <section class="capabilities section-shell" id="capabilities"><header class="section-heading reveal"><p>01 / PRODUCT SYSTEM</p><h2>不是替你写，<br>是让材料回到秩序里。</h2><span>面向需要严格遵循模板、反复整理材料并亲自审阅输出的工作流。</span></header><div class="capability-grid"><article class="capability feature reveal"><span class="number">01</span><div class="diagram document-diagram" aria-hidden="true"><i></i><i></i><i></i><i></i></div><h3>模板结构优先</h3><p>围绕已有课程模板组织内容，减少标题、分页、图表和段落样式被意外破坏。</p></article><article class="capability reveal delay-1"><span class="number">02</span><h3>材料留在本地</h3><p>购买网站只处理订单与授权，不保存报告正文、课程材料、截图或本地文件路径。</p><div class="metric"><strong>0</strong><span>份报告上传到<br>商业网站</span></div></article><article class="capability reveal delay-2"><span class="number">03</span><h3>输出必须审阅</h3><p>工具负责整理与检查，事实、结论和最终提交仍由使用者确认。</p><ul><li>结构检查</li><li>格式安全</li><li>人工确认</li></ul></article></div></section>
+    <section class="proof section-shell" id="proof"><header class="section-heading split reveal"><div><p>02 / PROOF ARCHIVE</p><h2>成果会说话。<br>这里为真实案例留位。</h2></div><span>首批案例正在整理。正式展示前不使用虚构截图、虚假数据或杜撰评价。</span></header><div class="proof-grid" aria-label="产品成果预留位"><article class="proof-card proof-main reveal" data-proof-slot="template-before-after"><div class="placeholder-art compare-art" aria-hidden="true"><div><i></i><i></i><i></i><i></i></div><span>→</span><div><i></i><i></i><i></i><i></i></div></div><div class="proof-meta"><span>CASE SLOT / 01</span><h3>模板整理前后对照</h3><p>预留真实课程模板的结构、分页与样式对照位置。</p><b>真实案例整理中</b></div></article><article class="proof-card reveal delay-1" data-proof-slot="multi-course-output"><div class="placeholder-art stack-art" aria-hidden="true"><i></i><i></i><i></i></div><div class="proof-meta"><span>CASE SLOT / 02</span><h3>多类型成果画廊</h3><p>用于展示不同课程、模板和输出形态。</p><b>待首批用户授权</b></div></article><article class="proof-card reveal delay-2" data-proof-slot="format-details"><div class="placeholder-art detail-art" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div><div class="proof-meta"><span>CASE SLOT / 03</span><h3>格式细节证据</h3><p>用于放大标题层级、图注、页眉与表格等细节。</p><b>素材准备中</b></div></article></div></section>
+    <section class="voices section-shell" id="voices"><header class="section-heading split reveal"><div><p>03 / USER VOICES</p><h2>真实反馈，<br>只在真实发生后展示。</h2></div><span>后续可替换为用户原话、使用场景与经授权的成果链接；目前不伪造背书。</span></header><div class="voice-grid"><article class="voice-card reveal" data-feedback-slot="1"><span>FEEDBACK / 01</span><blockquote>“首批用户反馈征集中”</blockquote><p>预留：使用场景 · 解决的问题 · 用户身份说明</p></article><article class="voice-card reveal delay-1" data-feedback-slot="2"><span>FEEDBACK / 02</span><blockquote>“等待一次真实的完成体验”</blockquote><p>预留：激活体验 · 模板保真 · 复用意愿</p></article><article class="voice-card invite reveal delay-2"><span>EARLY USER</span><h3>成为第一批共同打磨产品的人</h3><p>完成真实任务后，欢迎在售后群提交问题和建议。</p><strong>QQ群 923937311</strong></article></div></section>
+    <section class="process section-shell" id="process"><header class="section-heading reveal"><p>04 / HOW IT WORKS</p><h2>从付款到激活，<br>保持简单、可追踪。</h2></header><ol class="process-list"><li class="reveal"><b>01</b><div><h3>创建私密订单</h3><p>只填写核款和交付所需联系方式，不注册账号。</p></div></li><li class="reveal delay-1"><b>02</b><div><h3>扫码付款，提交核验</h3><p>通过支付宝经营码付款，不上传付款截图。</p></div></li><li class="reveal delay-2"><b>03</b><div><h3>人工确认，页面取货</h3><p>卖家确认到账后，订单页自动显示激活密钥。</p></div></li></ol></section>
+    <section class="checkout-section" id="checkout"><div class="checkout-intro reveal"><p>05 / EARLY ACCESS</p><h2>先用一杯饮料的价格，<br>验证它是否适合你。</h2><div class="offer"><strong id="price">¥9.90</strong><span>一次性抢先体验</span></div><dl><div><dt>使用权</dt><dd>当前 beta 永久</dd></div><div><dt>更新</dt><dd>购买后 30 天</dd></div><div><dt>升级</dt><dd>创始版抵扣 ¥9.9</dd></div><div><dt>交付</dt><dd>人工核款后自动取货</dd></div></dl><p class="refund-note"><b>购买前请确认：</b>密钥属于数字化交付，交付后原则上不支持无理由退款。兼容性或功能问题请先联系售后。</p></div>
+      <div class="checkout-panel reveal delay-1"><ol class="steps" aria-label="购买步骤"><li class="active" data-step="1"><b>01</b><span>创建订单</span></li><li data-step="2"><b>02</b><span>付款核验</span></li><li data-step="3"><b>03</b><span>订单取货</span></li></ol>
+        <section id="createStep"><p class="panel-code">ORDER / NEW</p><h3>创建私密订单</h3><form id="orderForm"><label>接收密钥的联系方式<input name="contact" required maxlength="160" autocomplete="off" placeholder="微信号、邮箱或其他私密联系方式"><small>只用于核款与交付，订单页仅显示掩码。</small></label><fieldset><legend>付款方式</legend><div id="providerChoices" class="providers"><p class="muted">正在读取可用付款方式…</p></div></fieldset><label class="agreement"><input type="checkbox" required><span>我确认本产品为数字化软件服务，密钥交付后即视为交付完成；除重复付款、无法激活且无法修复、重大功能缺陷或法律另有规定外，不支持七日无理由退款。</span></label><button class="button primary full" type="submit">创建 ¥9.9 订单</button></form></section>
+        <section id="paymentStep" hidden><p class="panel-code">PAYMENT / MANUAL CHECK</p><h3>完成付款并提交核验</h3><div class="order-strip"><span>订单号</span><code id="orderId"></code></div><div id="paymentInstructions" class="payment-instructions"></div><p class="notice">请核对收款方为卖家公布的经营主体。不要向临时个人账号或代收账号转账。</p><form id="paymentForm"><label>付款交易号或备注<input name="payment_reference" required maxlength="120" autocomplete="off" placeholder="用于人工核款，不要填写支付密码"></label><label>付款时间<input name="paid_at" type="datetime-local" required></label><button class="button primary full" type="submit">我已付款，提交核验</button></form></section>
+        <section id="statusStep" hidden><p class="panel-code">ORDER / STATUS</p><div class="status-heading"><h3 id="statusTitle">正在查询</h3><span id="statusBadge" class="status-badge"></span></div><p id="statusMessage" class="status-message"></p><dl id="statusFields" class="status-fields"></dl><div id="deliveryKeyBox" class="delivery-key" hidden><span>你的激活密钥</span><code id="deliveryKeyValue"></code><button id="copyDeliveryKey" type="button">复制激活密钥</button><p>请勿公开转发。首次激活后，这把密钥会绑定当前安装。</p></div><div class="token-box"><span>订单查询 Token</span><code id="statusToken"></code><button id="copyToken" type="button">复制</button></div><p class="token-warning">Token 等同订单查询凭证。本站不设账号，请妥善保存且不要公开。</p><div class="status-actions"><button id="refreshOrder" class="button" type="button">刷新状态</button><a class="support-action" href="#policy">售后与退款说明</a></div></section>
+      </div></section>
+    <section class="policy section-shell" id="policy"><header class="section-heading reveal"><p>06 / TERMS & SUPPORT</p><h2>交易前，<br>把边界说清楚。</h2></header><div class="policy-grid"><article class="reveal"><span>01</span><h3>退款规则</h3><p id="refundPolicy">本产品为数字化软件服务。密钥交付后原则上不接受无理由退款；重复付款、无法激活且无法修复、重大功能缺陷或法律另有规定的情形，请联系售后人工核实处理。</p></article><article class="reveal delay-1"><span>02</span><h3>隐私说明</h3><p>订单保存联系方式、支付渠道、交易核验信息和授权状态，不收集付款截图。报告正文、模板和课程材料始终留在本地。</p></article><article class="reveal delay-2"><span>03</span><h3>学术诚信</h3><p>产品用于模板编译、格式检查、材料整理与用户审阅；不得用于代写、伪造数据或绕过学校及课程规定。</p></article><article class="reveal"><span>04</span><h3>服务与授权</h3><p>密钥定期取得最长 24 小时的签名租约。退款获批或发生违规时，密钥会被封禁；共享电脑与完整克隆环境不在防护范围内。</p></article></div><div class="support-banner reveal"><div><span>AFTER SALES</span><h3>激活失败、重复付款或重大故障？</h3><p>请准备订单号与问题描述，不要在群内公开订单 Token 或激活密钥。</p></div><strong id="supportContact">售后QQ群：923937311</strong></div></section>
   </main>
-
-  <dialog id="lookupDialog">
-    <form method="dialog"><button class="dialog-close" aria-label="关闭">×</button></form>
-    <p class="card-code">ORDER / LOOKUP</p><h2>查询已有订单</h2>
-    <form id="lookupForm"><label>订单查询 Token<input name="token" required autocomplete="off"></label><button class="button primary" type="submit">查询</button></form>
-  </dialog>
-  <div id="toast" role="status" aria-live="polite"></div>
-  <script src="/buy/purchase.js" defer></script>
+  <footer><a class="wordmark" href="/buy"><span class="mark">LF</span><span>LAB FACTORY</span></a><p>本地工具，清楚边界，保留人的判断。</p><div><a href="#policy">退款与隐私</a><button id="footerLookup" type="button">查询订单</button></div></footer>
+  <dialog id="lookupDialog"><form method="dialog"><button class="dialog-close" aria-label="关闭">×</button></form><p class="panel-code">ORDER / LOOKUP</p><h2>查询已有订单</h2><form id="lookupForm"><label>订单查询 Token<input name="token" required autocomplete="off"></label><button class="button primary" type="submit">查询</button></form></dialog><div id="toast" role="status" aria-live="polite"></div><script src="/buy/purchase.js" defer></script>
 </body>
 </html>

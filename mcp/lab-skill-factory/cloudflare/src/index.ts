@@ -219,6 +219,8 @@ async function checkoutConfig(env: Env): Promise<Response> {
       amount_cents: Number(env.PRICE_CENTS),
       currency: "CNY",
       refund_days: Number(env.REFUND_DAYS),
+      self_service_refunds: false,
+      refund_policy: "数字化商品密钥交付后原则上不支持无理由退款；重复付款、无法激活且无法修复、重大功能缺陷或法律另有规定的情形，请联系售后人工处理。",
       entitlement: "当前 beta 永久使用，30 天内可更新，升级正式创始版抵扣 9.9 元",
     },
     payment_providers: [{
@@ -288,34 +290,8 @@ async function submitPayment(request: Request, env: Env): Promise<Response> {
 }
 
 async function requestOrderRefund(request: Request, env: Env): Promise<Response> {
-  const input = await body(request);
-  const reason = text(input.reason, "reason", 500);
-  const row = await orderByToken(request, env);
-  const current = String(row.status);
-  if (current === "refund_requested") return json(200, {ok: true, order: await orderValue(env, row, true)});
-  if (!["paid", "key_issued", "delivered"].includes(current)) throw new HttpError(409, "INVALID_STATE", `refund cannot be requested from ${current}`);
-  let key: Row | null = null;
-  if (row.license_key_id) {
-    key = await env.DB.prepare("SELECT * FROM license_keys WHERE id=?").bind(row.license_key_id).first<Row>();
-    if (!key) throw new HttpError(409, "LICENSE_KEY_MISSING", "linked license key is missing");
-    if (key.status === "active" && key.refund_deadline && Date.now() > Date.parse(String(key.refund_deadline))) throw new HttpError(409, "REFUND_WINDOW_CLOSED", "the no-reason refund window has closed");
-    if (!["unused", "active", "refund_requested"].includes(String(key.status))) throw new HttpError(409, "INVALID_STATE", `linked key is ${key.status}`);
-  }
-  const currentTime = nowIso();
-  const statements = [
-    env.DB.prepare("UPDATE orders SET status='refund_requested',refund_requested_at=?,updated_at=? WHERE id=?")
-      .bind(currentTime, currentTime, row.id),
-    orderAudit(env, String(row.id), "refund_requested", "customer", reason || "no-reason refund"),
-  ];
-  if (key && key.status !== "refund_requested") {
-    statements.push(
-      env.DB.prepare("UPDATE license_keys SET status='refund_requested',revoked_at=?,revoke_reason='customer order refund request' WHERE id=?").bind(currentTime, key.id),
-      audit(env, String(key.id), "refund_requested", "customer", "via order page"),
-    );
-  }
-  await env.DB.batch(statements);
-  const fresh = await env.DB.prepare("SELECT * FROM orders WHERE id=?").bind(row.id).first<Row>();
-  return json(200, {ok: true, order: await orderValue(env, fresh!, true)});
+  await orderByToken(request, env);
+  throw new HttpError(409, "SELF_SERVICE_REFUND_UNAVAILABLE", "数字化商品交付后不提供自助无理由退款。重复付款、无法激活或重大功能故障请联系售后QQ群 923937311 处理。");
 }
 
 async function importLeasePrivate(env: Env): Promise<CryptoKey> {
@@ -432,18 +408,8 @@ async function refreshLease(request: Request, env: Env): Promise<Response> {
 }
 
 async function requestClientRefund(request: Request, env: Env): Promise<Response> {
-  const verified = await authenticatedProof(request, env, "refund_request");
-  const row = verified.row;
-  if (row.status === "refund_requested") return json(200, {ok: true, status: "refund_requested", refund_deadline: row.refund_deadline});
-  if (row.status !== "active") throw new HttpError(409, "INVALID_STATE", `refund cannot be requested from ${row.status}`);
-  if (!row.refund_deadline || verified.now.getTime() > Date.parse(String(row.refund_deadline))) throw new HttpError(409, "REFUND_WINDOW_CLOSED", "the no-reason refund window has closed");
-  const current = verified.now.toISOString().replace(/\.\d{3}Z$/, "+00:00");
-  await consumeNonce(env, row, verified.nonce, verified.now, [
-    env.DB.prepare("UPDATE license_keys SET status='refund_requested',revoked_at=?,revoke_reason='customer refund request' WHERE id=? AND status='active'").bind(current, row.id),
-    env.DB.prepare("UPDATE orders SET status='refund_requested',refund_requested_at=?,updated_at=? WHERE license_key_id=? AND status IN ('key_issued','delivered')").bind(current, current, row.id),
-    audit(env, String(row.id), "refund_requested", "client", "within no-reason refund window"),
-  ]);
-  return json(200, {ok: true, status: "refund_requested", refund_deadline: row.refund_deadline});
+  await authenticatedProof(request, env, "refund_request");
+  throw new HttpError(409, "SELF_SERVICE_REFUND_UNAVAILABLE", "数字化商品交付后不提供自助无理由退款。重复付款、无法激活或重大功能故障请联系售后QQ群 923937311 处理。");
 }
 
 async function listOrders(url: URL, env: Env): Promise<Response> {

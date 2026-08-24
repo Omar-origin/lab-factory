@@ -2,7 +2,7 @@
 
 公开购买页与密钥中控由同一个服务承载：
 
-- `/buy`：购买、付款信息提交、订单查询和退款申请。
+- `/buy`：产品介绍、购买、付款信息提交和订单查询；不提供自助无理由退款。
 - `/admin`：人工核款、一键自动发货、原路退款和封禁；保留拆分签发/交付作为异常恢复入口。
 - GitHub README 只应链接到 `/buy`，不要使用 GitHub Issues、Discussions 或 Pages 处理付款、联系方式和退款。
 
@@ -28,7 +28,7 @@ payment_pending → payment_submitted ──确认到账并自动发货──→
         ↑                └→ payment_rejected
         └───────────────────────┘（用户修正后重新提交）
 
-delivered → refund_requested → refunded
+delivered ──异常售后人工确认──→ refunded
 ```
 
 操作顺序：
@@ -38,7 +38,8 @@ delivered → refund_requested → refunded
 3. 卖家在支付平台的商户记录中核对金额、时间和交易信息。
 4. 点击“确认到账并自动发货”。系统在同一事务中确认付款、创建唯一密钥并标记交付。
 5. 用户订单页每 10 秒自动刷新；只有持有该订单 256-bit Token 的用户能看到完整密钥。D1 不保存自动交付密钥明文，Worker 按订单从卖家 Secret 确定性派生。
-6. 退款时先在原支付交易中完成原路退款，再在中控确认退款；关联密钥随即停止续租，现有租约最长 24 小时后失效。
+6. 数字化密钥交付后原则上不接受无理由退款。重复付款、无法激活且无法修复、重大功能缺陷或法律另有规定时，用户通过售后 QQ 群提交订单号与问题描述。
+7. 异常退款审核通过后，先在原支付交易中完成原路退款，再在中控确认退款；关联密钥随即停止续租，现有租约最长 24 小时后失效。
 
 网页中控提供所有操作。也可以使用 CLI：
 
@@ -48,7 +49,7 @@ python3 mcp/lab-skill-factory/auth/license_control_admin.py orders confirm-and-d
 python3 mcp/lab-skill-factory/auth/license_control_admin.py orders refund lforder_xxx --reason "原路退款已完成"
 ```
 
-重复执行 `confirm-and-deliver` 和退款是幂等操作，不会生成第二把密钥。旧的 `confirm-payment`、`issue`、`deliver` 命令只用于异常恢复，不作为日常订单流程。
+重复执行 `confirm-and-deliver` 和管理员退款是幂等操作，不会生成第二把密钥。旧的 `confirm-payment`、`issue`、`deliver` 命令只用于异常恢复，不作为日常订单流程。旧客户端调用用户退款接口时会收到 `SELF_SERVICE_REFUND_UNAVAILABLE`，且不会改变订单或密钥状态。
 
 ## Token、隐私和清理
 

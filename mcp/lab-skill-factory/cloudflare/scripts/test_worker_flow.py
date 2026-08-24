@@ -100,6 +100,13 @@ def main() -> int:
     verify_lease(activated["lease"], public_record, install_id=install_id, product_id="lab-factory-1")
     tests += 1
 
+    refund_proof = {"action": "refund_request", "activation_token": activated["activation_token"], "install_id": install_id, "timestamp": utc_now(), "nonce": "worker-refund-guidance-" + uuid.uuid4().hex}
+    status, client_refund = call(base, "POST", "/api/refunds/request", {
+        "activation_token": activated["activation_token"], "proof": refund_proof, "signature": sign_device_message(device, refund_proof),
+    })
+    check(status == 409 and client_refund["error"]["code"] == "SELF_SERVICE_REFUND_UNAVAILABLE", "client self-service refund was not rejected")
+    tests += 1
+
     proof = {"action": "refresh", "activation_token": activated["activation_token"], "install_id": install_id, "timestamp": utc_now(), "nonce": "worker-refresh-" + uuid.uuid4().hex}
     status, refreshed = call(base, "POST", "/api/lease/refresh", {
         "activation_token": activated["activation_token"], "proof": proof, "signature": sign_device_message(device, proof),
@@ -109,16 +116,22 @@ def main() -> int:
     tests += 1
 
     status, refund = call(base, "POST", "/api/order/refund", {"reason": "worker test refund"}, order_headers)
-    check(status == 200 and refund["order"]["status"] == "refund_requested", "refund request failed")
+    check(status == 409 and refund["error"]["code"] == "SELF_SERVICE_REFUND_UNAVAILABLE", "self-service refund was not rejected")
+    tests += 1
+    still_active_proof = {"action": "refresh", "activation_token": activated["activation_token"], "install_id": install_id, "timestamp": utc_now(), "nonce": "worker-refresh-active-" + uuid.uuid4().hex}
+    status, still_active = call(base, "POST", "/api/lease/refresh", {
+        "activation_token": activated["activation_token"], "proof": still_active_proof, "signature": sign_device_message(device, still_active_proof),
+    })
+    check(status == 200 and still_active["status"] == "active", "rejected self-service refund changed the key")
+    tests += 1
+    status, refunded = call(base, "POST", f"/admin/orders/{order_id}/refund", {"reason": "test original-route refund"}, admin_headers)
+    check(status == 200 and refunded["order"]["status"] == "refunded" and refunded["order"]["license"]["status"] == "refunded", "completed refund did not revoke key")
     tests += 1
     blocked_proof = {"action": "refresh", "activation_token": activated["activation_token"], "install_id": install_id, "timestamp": utc_now(), "nonce": "worker-refresh-blocked-" + uuid.uuid4().hex}
     status, blocked = call(base, "POST", "/api/lease/refresh", {
         "activation_token": activated["activation_token"], "proof": blocked_proof, "signature": sign_device_message(device, blocked_proof),
     })
-    check(status == 403 and blocked["error"]["code"] == "KEY_BLOCKED", "refund did not block lease refresh")
-    tests += 1
-    status, refunded = call(base, "POST", f"/admin/orders/{order_id}/refund", {"reason": "test original-route refund"}, admin_headers)
-    check(status == 200 and refunded["order"]["status"] == "refunded" and refunded["order"]["license"]["status"] == "refunded", "completed refund did not revoke key")
+    check(status == 403 and blocked["error"]["code"] == "KEY_BLOCKED", "admin refund did not block lease refresh")
     tests += 1
 
     print(json.dumps({"ok": True, "tests": tests, "base_url": base}, ensure_ascii=False))

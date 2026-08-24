@@ -128,7 +128,7 @@ def main() -> int:
             purchase_html = response.read().decode("utf-8")
             purchase_csp = response.headers.get("Content-Security-Policy", "")
         tests += 1
-        check("三步完成购买" in purchase_html and "frame-ancestors 'none'" in purchase_csp, "purchase UI or security headers are missing")
+        check("成果会说话" in purchase_html and "数字化软件服务" in purchase_html and "frame-ancestors 'none'" in purchase_csp, "purchase UI, refund policy, or security headers are missing")
 
         with urllib.request.urlopen(base_url + "/payment-assets/alipay", timeout=5) as response:
             qr_body = response.read()
@@ -140,6 +140,8 @@ def main() -> int:
             checkout = json.loads(response.read())
         tests += 1
         check(checkout["product"]["amount_cents"] == 990 and checkout["support_contact"] == "support@example.test", "checkout configuration is wrong")
+        check("不支持无理由退款" in checkout["product"]["refund_policy"], "checkout refund policy is missing")
+        check(checkout["product"]["self_service_refunds"] is False, "self-service refund capability was exposed")
         check(next(item for item in checkout["payment_providers"] if item["id"] == "alipay")["qr_image_url"] == "/payment-assets/alipay", "Alipay QR was not exposed through provider config")
         check(not next(item for item in checkout["payment_providers"] if item["id"] == "paddle")["available"], "Paddle was exposed before webhook support")
 
@@ -190,7 +192,8 @@ def main() -> int:
         check(store.get_order(order_id)["status"] == "delivered", "order delivery state changed unexpectedly")
         refund_status, refund_body = post(base_url + "/api/order/refund", {"reason": "changed mind"}, order_token=order_token)
         tests += 1
-        check(refund_status == 200 and refund_body["order"]["status"] == "refund_requested", "order-page refund request failed")
+        check(refund_status == 409 and refund_body["error"]["code"] == "SELF_SERVICE_REFUND_UNAVAILABLE", "order-page self-service refund was not rejected")
+        check(store.get_order(order_id)["status"] == "delivered", "rejected refund request changed the order")
         refunded_order = store.admin_order_action(order_id, "refund", "original-route refund completed")
         tests += 1
         check(refunded_order["order"]["status"] == "refunded" and refunded_order["order"]["license"]["status"] == "refunded", "refund did not revoke linked key")
@@ -231,13 +234,9 @@ def main() -> int:
         os.environ["LAB_FACTORY_CREDENTIAL_BACKEND"] = "file"
         os.environ["LAB_FACTORY_CONTROL_URL"] = base_url
 
-        refund_confirmation_blocked = False
-        try:
-            server.tool_request_refund({})
-        except server.ToolError:
-            refund_confirmation_blocked = True
+        refund_guidance = server.tool_request_refund({})
         tests += 1
-        check(refund_confirmation_blocked, "MCP refund tool did not require explicit confirmation")
+        check(refund_guidance["status"] == "AFTER_SALES_REQUIRED" and "923937311" in refund_guidance["message"], "MCP refund tool did not return after-sales guidance")
 
         created = store.create_key(label="three-day", customer_ref="order-1", refund_days=3)
         activation_key, key_id = created["activation_key"], created["key"]["id"]
@@ -286,13 +285,10 @@ def main() -> int:
 
         refund_result = client.request_refund()
         tests += 1
-        check(refund_result["status"] == "refund_requested", "refund request was not recorded")
-        expect_control_error("KEY_BLOCKED", lambda: store.refresh(signed_payload(refreshed, device_record, client.install_id(), "refresh", "blocked-refresh")))
-
-        store.admin_action(key_id, "restore", "refund request rejected")
-        restored = store.refresh(signed_payload(refreshed, device_record, client.install_id(), "refresh", "restored-refresh"))
+        check(refund_result["status"] == "AFTER_SALES_REQUIRED", "refund command did not return after-sales guidance")
+        restored = store.refresh(signed_payload(refreshed, device_record, client.install_id(), "refresh", "still-active-after-guidance"))
         tests += 1
-        check(restored["ok"], "restored key could not refresh")
+        check(restored["ok"], "after-sales guidance unexpectedly blocked the key")
 
         store.admin_action(key_id, "ban", "policy violation")
         client._ONLINE_REFRESH_ATTEMPTED = False
@@ -321,7 +317,7 @@ def main() -> int:
                     ((datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat(), seven["key"]["id"]),
                 )
         expired_refund = signed_payload(seven_activation, seven_device, "install_seven", "refund_request", "expired-refund")
-        expect_control_error("REFUND_WINDOW_CLOSED", lambda: store.request_refund(expired_refund))
+        expect_control_error("SELF_SERVICE_REFUND_UNAVAILABLE", lambda: store.request_refund(expired_refund))
         tests += 1
 
         valid_lease = issue_lease(
@@ -369,7 +365,7 @@ def main() -> int:
         events = store.get_key(key_id)["audit_events"]
         event_names = {event["event"] for event in events}
         tests += 1
-        check({"key_created", "key_activated", "refund_requested", "key_banned", "key_restored", "binding_reset"} <= event_names, "audit history is incomplete")
+        check({"key_created", "key_activated", "key_banned", "key_restored", "binding_reset"} <= event_names, "audit history is incomplete")
 
     print(json.dumps({"ok": True, "tests": tests}, ensure_ascii=False))
     return 0

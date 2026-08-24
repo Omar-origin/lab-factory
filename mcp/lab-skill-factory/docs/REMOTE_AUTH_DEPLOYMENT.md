@@ -8,7 +8,7 @@
 - 首次激活通过 `BEGIN IMMEDIATE` 原子绑定安装 ID 和安装 Ed25519 公钥；第二个安装收到 `409 KEY_ALREADY_USED`。
 - 客户端每次 MCP 进程启动尝试刷新，此后按租约中的 `refresh_after`（6 小时）刷新。
 - 租约最长 24 小时。中控不可达时，只能继续使用尚未过期的本地租约。
-- 退款申请、退款完成或违规封禁后不再签发租约，最迟在现有租约到期时停用。
+- 异常退款经人工确认、退款完成或违规封禁后不再签发租约，最迟在现有租约到期时停用。
 - 不承诺识别共享电脑或完整克隆环境；准确表述是“绑定一个安装”。
 
 ## 初始化
@@ -29,7 +29,7 @@ python3 mcp/lab-skill-factory/auth/license_control_admin.py init-lease-issuer \
 - `LAB_CONTROL_KEY_PEPPER`：激活密钥 HMAC。
 - `LAB_CONTROL_TOKEN_SECRET`：确定性安装 Token。
 
-购买页还需要配置价格、退款期限、售后QQ群，以及支付宝经营码图片的服务器私有路径。完整变量见 [购买页、人工核款与退款运营](COMMERCIAL_PURCHASE.md)。经营码图片不得提交到公开仓库。
+购买页还需要配置价格、异常售后参考期、售后QQ群，以及支付宝经营码图片的服务器私有路径。完整变量见 [购买页、人工核款与退款运营](COMMERCIAL_PURCHASE.md)。经营码图片不得提交到公开仓库。
 
 不要复用三个值，也不要提交 Git。
 
@@ -57,7 +57,7 @@ python3 mcp/lab-skill-factory/auth/license_control_service.py
 
 卖家网页中控位于 `https://lab.alan.elyther.top/admin`。页面要求手动输入管理员 Token，Token 只保存在当前页面内存，刷新后清除。
 
-公开购买页位于 `https://lab.alan.elyther.top/buy`。生产环境应分别为订单创建、查询、付款提交和退款申请设置限流；订单 Token 只通过 `X-Order-Token` 请求头传递。
+公开购买页位于 `https://lab.alan.elyther.top/buy`。生产环境应分别为订单创建、查询和付款提交设置限流；旧版退款接口继续限流并统一拒绝自助申请。订单 Token 只通过 `X-Order-Token` 请求头传递。
 
 ## 卖家操作
 
@@ -77,7 +77,7 @@ python3 mcp/lab-skill-factory/auth/license_control_admin.py keys reset-binding l
 
 网页和 CLI 都只显示密钥后四位。创建后丢失明文时应创建新密钥，不要尝试从数据库恢复。
 
-## 用户激活与退款
+## 用户激活与售后
 
 ```bash
 lab-factory install --target both \
@@ -90,7 +90,7 @@ lab-factory activate-key 'LF-XXXX-...' \
 lab-factory request-refund
 ```
 
-退款申请只能在该密钥配置的 3/7 天窗口内提交，提交后状态变为 `refund_requested` 并停止续租。卖家实际退回款项后再执行 `keys refund`；拒绝或取消申请时执行 `keys restore`。
+`request-refund` 只显示售后 QQ 群与适用情形，不自动提交退款或停止续租。数字化密钥交付后原则上不接受无理由退款；重复付款、无法激活且无法修复、重大功能缺陷或法律另有规定时，由售后人工核实。卖家实际退回款项后再执行 `keys refund`；误操作时可执行 `keys restore`。
 
 ## 状态与审计
 
@@ -101,7 +101,7 @@ banned / refund_requested → active    （管理员恢复）
 active / banned → unused               （换机重置）
 ```
 
-创建、发送、激活、刷新、退款申请、退款完成、封禁、恢复和换机重置都会写入 `audit_events`。中控不保存报告内容或用户机器信息，只保存随机安装 ID、安装公钥、订单引用和授权时间。
+创建、发送、激活、刷新、管理员退款、封禁、恢复和换机重置都会写入 `audit_events`。中控不保存报告内容或用户机器信息，只保存随机安装 ID、安装公钥、订单引用和授权时间。
 
 ## 备份与轮换
 
