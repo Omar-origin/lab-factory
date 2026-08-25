@@ -89,6 +89,40 @@ def make_section_template(path: Path) -> None:
     document.save(path)
 
 
+def make_structured_report(path: Path, theme: str, valid: bool = True) -> None:
+    document = Document()
+    document.add_heading(f"{theme}实验报告", level=1)
+    document.add_paragraph(f"本节先说明{theme}的操作目标和验证边界，随后使用真实证据位置辅助说明。")
+    document.add_paragraph(f"第一步完成{theme}环境检查，并记录输入条件、操作顺序和预期结果。")
+    if valid:
+        document.add_paragraph("如图 2-1 所示，该界面用于核对关键状态。")
+        document.add_paragraph(f"【图 2-1：{theme}关键状态界面；待补：真实运行截图】")
+        document.add_paragraph("核心字段和职责见表 2-1，真实值由后续运行结果补充。")
+        document.add_paragraph(f"【表 2-1：{theme}核心字段与职责；待补：字段、类型、约束和来源】")
+    else:
+        document.add_paragraph("2.2.1 XXX功能")
+        document.add_paragraph("【绘图：请同时补充类图、活动图和状态图】")
+    document.add_paragraph(f"第二步围绕{theme}的异常分支进行检查，重点比较预期行为和实际反馈。")
+    document.add_paragraph(f"第三步整理{theme}的持久化约束，避免把页面参数直接写入数据层。")
+    document.add_paragraph("问题1：输入条件不完整。解决办法：先校验必要字段，再执行后续步骤。")
+    document.add_paragraph("心得体会：本次实验让我更清楚地看到验证顺序对定位问题的影响。")
+    document.add_paragraph("建议：后续增加边界输入和恢复路径的真实测试记录。")
+    document.save(path)
+
+
+def make_problem_evidence_report(path: Path, include_placeholder: bool) -> None:
+    document = Document()
+    document.add_heading("异常处理实验报告", level=1)
+    document.add_paragraph("本次实验先完成环境配置，再使用边界输入检查异常路径。")
+    document.add_paragraph("问题和解决办法")
+    document.add_paragraph("问题1：运行时出现错误提示，无法从文字描述判断具体配置状态。")
+    if include_placeholder:
+        document.add_paragraph("解决过程中的界面状态如图 4-1 所示。")
+        document.add_paragraph("【图 4-1：异常配置提示界面；待补：包含真实错误信息的运行截图】")
+    document.add_paragraph("解决办法：核对配置项后重新运行，并保留修复前后的验证记录。")
+    document.save(path)
+
+
 def xml_entry_hashes(path: Path) -> dict[str, str]:
     with zipfile.ZipFile(path) as archive:
         return {name: ENGINE.sha256(archive.read(name)) for name in archive.namelist()}
@@ -418,6 +452,128 @@ def run() -> dict:
         reference.write_text(repeated + "。另一段。", encoding="utf-8")
         similarity = ENGINE.similarity_check(generated, [reference], [])
         results.append({"name": "similarity-block", "ok": similarity["gate"] == "blocked"})
+
+        prior_a = root / "prior-a.md"
+        prior_b = root / "prior-b.txt"
+        prior_a.write_text(
+            "# 计算机网络实验\n\n实验目的\n\n"
+            "我先配置了本机地址，然后使用抓包工具检查请求。运行后发现第一次解析没有返回结果，"
+            "排查后确认是缓存未清理。重新执行命令后得到了预期记录。\n\n"
+            "这一步让我理解了缓存对实验现象的影响，也说明观察结果时不能只看一次输出。\n",
+            encoding="utf-8",
+        )
+        prior_b.write_text(
+            "软件工程实验中，我先完成接口，再根据测试结果补充异常处理。"
+            "最开始遗漏了空输入，测试失败后增加了边界判断。"
+            "修改完成后重新运行用例，正常路径和异常路径都得到了对应结果。\n",
+            encoding="utf-8",
+        )
+        personal_profile = ENGINE.analyze_writing_samples([prior_a, prior_b])
+        serialized_profile = json.dumps(personal_profile, ensure_ascii=False)
+        results.append({
+            "name": "prior-report-analysis-extracts-profile-without-body-or-path",
+            "ok": (
+                personal_profile["kind"] == "personal_writing_profile"
+                and personal_profile["sample_summary"]["sample_count"] == 2
+                and personal_profile["privacy"]["stores_report_body"] is False
+                and str(prior_a) not in serialized_profile
+                and "第一次解析没有返回结果" not in serialized_profile
+            ),
+        })
+
+        ai_heavy = root / "ai-heavy.md"
+        ai_heavy.write_text(
+            "当然！首先，本实验标志着学习过程中的关键转折点。此外，这不仅仅是一次普通操作，"
+            "而是对综合能力的全面提升。专家认为该方法具有十分重要的意义。"
+            "综上所述，本实验为后续学习奠定了基础。希望这对您有帮助！\n",
+            encoding="utf-8",
+        )
+        natural = root / "natural.md"
+        natural.write_text(
+            "配置完成后，我用两组输入检查程序。第一组输出正常，第二组触发了边界错误。"
+            "定位到数组长度判断后，我把条件由小于改成小于等于，再次运行时两组结果都符合预期。\n",
+            encoding="utf-8",
+        )
+        ai_audit = ENGINE.humanization_audit(ai_heavy)
+        natural_audit = ENGINE.humanization_audit(natural)
+        results.append({
+            "name": "humanization-audit-uses-clusters-and-keeps-detectors-out-of-gate",
+            "ok": (
+                ai_audit["status"] == "retryable_failure"
+                and natural_audit["status"] == "pass"
+                and ai_audit["detector_policy"] == "ai_detector_scores_are_not_quality_gates"
+            ),
+        })
+
+        cohort_collision = ENGINE.cohort_similarity_check(generated, [reference], [])
+        cohort_cold_start = ENGINE.cohort_similarity_check(generated, [], [])
+        unrelated = root / "unrelated.md"
+        unrelated.write_text(
+            "完成接口实现后，测试主要检查空值和重复提交。两个异常分支都返回了预定状态码，"
+            "但日志字段仍然不够完整，后面需要补充请求编号。\n",
+            encoding="utf-8",
+        )
+        cohort_clear = ENGINE.cohort_similarity_check(unrelated, [natural], [])
+        collision_serialized = json.dumps(cohort_collision, ensure_ascii=False)
+        results.append({
+            "name": "cohort-collision-gate-is-private-and-distinguishes-clear-output",
+            "ok": (
+                cohort_collision["gate"] == "blocked"
+                and cohort_clear["gate"] == "pass"
+                and cohort_cold_start["gate"] == "pass"
+                and cohort_cold_start["coverage"]["status"] == "baseline_unavailable"
+                and cohort_cold_start["coverage"]["comparison_count"] == 0
+                and str(reference) not in collision_serialized
+                and repeated not in collision_serialized
+            ),
+        })
+
+        structured_a = root / "structured-a.docx"
+        structured_b = root / "structured-b.docx"
+        structured_invalid = root / "structured-invalid.docx"
+        problem_without_figure = root / "problem-without-figure.docx"
+        problem_with_figure = root / "problem-with-figure.docx"
+        make_structured_report(structured_a, "网络地址配置")
+        make_structured_report(structured_b, "数据库事务设计")
+        make_structured_report(structured_invalid, "类模型设计", valid=False)
+        make_problem_evidence_report(problem_without_figure, include_placeholder=False)
+        make_problem_evidence_report(problem_with_figure, include_placeholder=True)
+        structured_audit = ENGINE.document_structure_audit(structured_a)
+        invalid_audit = ENGINE.document_structure_audit(structured_invalid)
+        problem_missing_audit = ENGINE.document_structure_audit(problem_without_figure)
+        problem_complete_audit = ENGINE.document_structure_audit(problem_with_figure)
+        structural_collision = ENGINE.cohort_similarity_check(structured_a, [structured_b], [])
+        results.append({
+            "name": "document-structure-audit-enforces-numbered-single-placeholders-and-table-decision",
+            "ok": (
+                structured_audit["status"] == "pass"
+                and structured_audit["caption_cross_reference_ok"] is True
+                and structured_audit["evidence_counts"] == {
+                    "numbered_figures": 1, "numbered_tables": 1, "unnumbered_placeholders": 0,
+                }
+                and invalid_audit["status"] == "retryable_failure"
+                and invalid_audit["single_asset_per_placeholder_ok"] is False
+                and bool(invalid_audit["unresolved_template_cues"])
+            ),
+        })
+        results.append({
+            "name": "problem-solution-screenshot-placeholder-is-required-only-when-helpful",
+            "ok": (
+                problem_missing_audit["problem_evidence_needed"] is True
+                and problem_missing_audit["problem_evidence_decision_recorded"] is False
+                and problem_missing_audit["status"] == "retryable_failure"
+                and problem_complete_audit["problem_evidence_decision_recorded"] is True
+                and problem_complete_audit["status"] == "pass"
+            ),
+        })
+        results.append({
+            "name": "cohort-gate-blocks-same-structure-even-when-topics-differ",
+            "ok": (
+                structural_collision["gate"] == "blocked"
+                and structural_collision["findings"][0]["structural_collision"] is True
+                and structural_collision["findings"][0]["structure_flow_similarity"] >= 0.9
+            ),
+        })
 
         migration = ENGINE.migrate_v1({"target_document": "old.docx", "items": [{"id": "summary", "target_anchor": "实验小结", "operation": "insert_after"}]})
         results.append({"name": "v1-migration", "ok": migration["fields"][0]["requires_relocation"] is True})

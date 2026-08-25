@@ -22,6 +22,7 @@ from typing import Any, Iterator
 
 
 VERSION = "2.1"
+WRITER_GENOME_VERSION = "3.0"
 MAX_IDEMPOTENCY_RESULTS = 50
 LOCK_TIMEOUT_SECONDS = 5.0
 NEXT_ACTIONS = {
@@ -33,6 +34,69 @@ QUESTION_SCOPES = {
     "section_change", "placement_choice",
 }
 TERMINAL_STATES = {"iteration_decided", "cancelled"}
+REQUIRED_QUALITY_GATES = {
+    "source_coverage",
+    "fact_integrity",
+    "student_identity",
+    "style_application",
+    "humanization",
+    "anti_copy",
+    "cross_report_collision",
+    "structure_diversity",
+    "caption_cross_reference",
+    "evidence_placeholder_balance",
+}
+
+LAYOUT_ARCHETYPES = [
+    "figure_led_explanation",
+    "explanation_then_evidence",
+    "visual_walkthrough",
+    "table_led_analysis",
+    "mixed_evidence_weave",
+]
+
+LAYOUT_ARCHETYPE_RULES = {
+    "figure_led_explanation": {
+        "opening_flow": "figure_placeholder_then_caption_then_explanation",
+        "visual_density": "medium",
+        "table_role": "comparison_or_registry_after_visual",
+    },
+    "explanation_then_evidence": {
+        "opening_flow": "explanation_then_cross_reference_then_figure_placeholder",
+        "visual_density": "low_to_medium",
+        "table_role": "summary_after_explanation_when_row_column_data_exists",
+    },
+    "visual_walkthrough": {
+        "opening_flow": "short_context_then_interleaved_visuals_and_notes",
+        "visual_density": "high",
+        "table_role": "compact_checkpoint_or_result_matrix",
+    },
+    "table_led_analysis": {
+        "opening_flow": "numbered_table_then_interpretation_then_supporting_figure",
+        "visual_density": "medium",
+        "table_role": "primary_comparison_or_design_inventory",
+    },
+    "mixed_evidence_weave": {
+        "opening_flow": "alternate_prose_table_and_figure_by_information_type",
+        "visual_density": "medium_to_high",
+        "table_role": "use_for_repeated_comparable_records_not_prose_packaging",
+    },
+}
+
+GENOME_AXES: dict[str, list[str]] = {
+    "reasoning_route": ["principle_to_operation", "operation_to_result", "result_to_explanation", "problem_to_resolution"],
+    "explanation_shape": ["cause_and_effect", "step_and_verification", "comparison_and_choice", "constraint_and_tradeoff"],
+    "sentence_rhythm": ["short_with_occasional_long", "mixed_balanced", "medium_with_short_checks", "long_then_short_conclusion"],
+    "paragraph_movement": ["one_action_one_paragraph", "claim_evidence_explanation", "observation_then_reason", "problem_process_takeaway"],
+    "terminology_handling": ["brief_first_use_definition", "term_then_operation", "term_then_example", "direct_course_term_use"],
+    "evidence_habit": ["result_linked", "step_verified", "contrast_expected_actual", "limitation_linked"],
+    "person_voice": ["mostly_neutral", "first_person_in_actions", "first_person_in_reflection", "limited_first_person_mixed"],
+    "reflection_signature": ["debugging_process", "concept_understanding", "implementation_tradeoff", "limitation_and_improvement"],
+    "uncertainty_style": ["state_specific_limit", "name_missing_evidence", "compare_expected_actual", "reserve_only_with_reason"],
+    "connector_density": ["low", "medium", "selective"],
+    "list_usage": ["low", "medium", "section_dependent"],
+    "revision_focus": ["remove_filler", "clarify_evidence", "vary_rhythm", "tighten_student_boundary"],
+}
 
 PREFERENCE_SCHEMA: dict[str, dict[str, Any]] = {
     "writing_level": {
@@ -244,20 +308,102 @@ def check_state_version(state: dict[str, Any], expected: int) -> None:
         )
 
 
-def default_preferences(subject: str) -> dict[str, Any]:
+def capsule_preference_values(identity_key: str) -> dict[str, str]:
+    digest = hashlib.sha256(("lab-factory-writer-capsule\n" + identity_key).encode("utf-8")).digest()
+    selectable = {
+        "detail_level": ["concise", "balanced", "detailed"],
+        "sentence_paragraph_style": ["short", "mixed", "long"],
+        "terminology_density": ["low", "medium", "high"],
+        "voice_tone": ["plain", "formal", "technical", "personal"],
+        "analysis_order": ["principle_first", "procedure_first", "result_first"],
+        "reflection_depth": ["learning_process", "problem_solving", "engineering", "critical_improvement"],
+        "variation_strength": ["medium", "high"],
+    }
+    values = {"writing_level": "natural_undergrad"}
+    for index, (key, choices) in enumerate(selectable.items(), start=1):
+        values[key] = choices[digest[index] % len(choices)]
+    return values
+
+
+def default_preferences(subject: str, identity_key: str) -> dict[str, Any]:
+    values = capsule_preference_values(identity_key)
     return {
         "version": VERSION,
         "subject": subject,
-        "status": "draft",
-        "values": {key: spec["default"] for key, spec in PREFERENCE_SCHEMA.items()},
-        "sources": {key: "built_in_default" for key in PREFERENCE_SCHEMA},
-        "answered": [],
+        "status": "provisional",
+        "values": values,
+        "sources": {key: "system_assigned_capsule" for key in PREFERENCE_SCHEMA},
+        "answered": list(PREFERENCE_SCHEMA),
         "updated_at": now_iso(),
     }
 
 
-def preferences_from_profile(subject: str, profile: dict[str, Any] | None) -> dict[str, Any]:
-    result = default_preferences(subject)
+def forbidden_profile_key(value: Any) -> str | None:
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if key in {"sample_text", "full_text", "report_body", "source_paths", "student_name", "student_id"}:
+                return key
+            found = forbidden_profile_key(child)
+            if found:
+                return found
+    elif isinstance(value, list):
+        for child in value:
+            found = forbidden_profile_key(child)
+            if found:
+                return found
+    return None
+
+
+def validate_personal_profile(profile: dict[str, Any]) -> None:
+    if profile.get("version") != "1.0" or profile.get("kind") != "personal_writing_profile":
+        raise AutopilotError("PERSONAL_PROFILE_INVALID", "旧报告画像版本或类型不受支持。")
+    forbidden = forbidden_profile_key(profile)
+    if forbidden:
+        raise AutopilotError("PERSONAL_PROFILE_PRIVATE_CONTENT", f"旧报告画像不得保存 {forbidden}。")
+    sample_summary = profile.get("sample_summary")
+    if not isinstance(sample_summary, dict) or not isinstance(sample_summary.get("sample_ids"), list):
+        raise AutopilotError("PERSONAL_PROFILE_INVALID", "旧报告画像缺少脱敏样本摘要。")
+    if not isinstance(profile.get("features"), dict):
+        raise AutopilotError("PERSONAL_PROFILE_INVALID", "旧报告画像缺少可解释写作特征。")
+    if not isinstance(profile.get("humanization_preferences"), dict) or not isinstance(profile.get("excluded_patterns"), list):
+        raise AutopilotError("PERSONAL_PROFILE_INVALID", "旧报告画像缺少去模板腔偏好或排除模式。")
+    privacy = profile.get("privacy") if isinstance(profile.get("privacy"), dict) else {}
+    required_privacy = {
+        "stores_report_body": False,
+        "stores_source_paths": False,
+        "stores_personal_identifiers": False,
+        "local_analysis_only": True,
+    }
+    if any(privacy.get(key) is not value for key, value in required_privacy.items()):
+        raise AutopilotError(
+            "PERSONAL_PROFILE_PRIVATE_CONTENT",
+            "旧报告画像必须明确仅本地分析，且不保存正文、源路径和个人标识。",
+        )
+    recommended = profile.get("recommended_preferences")
+    if not isinstance(recommended, dict):
+        raise AutopilotError("PERSONAL_PROFILE_INVALID", "旧报告画像缺少 recommended_preferences。")
+    for key, spec in PREFERENCE_SCHEMA.items():
+        if recommended.get(key) not in spec["values"]:
+            raise AutopilotError("PERSONAL_PROFILE_INVALID", f"旧报告画像中的 {key} 不合法。")
+
+
+def preferences_from_profile(
+    subject: str,
+    profile: dict[str, Any] | None,
+    personal_profile: dict[str, Any] | None,
+    identity_key: str,
+) -> dict[str, Any]:
+    result = default_preferences(subject, identity_key)
+    if personal_profile:
+        validate_personal_profile(personal_profile)
+        recommended = personal_profile["recommended_preferences"]
+        result["values"] = {key: recommended[key] for key in PREFERENCE_SCHEMA}
+        result["sources"] = {key: "prior_report_profile" for key in PREFERENCE_SCHEMA}
+        result["answered"] = list(PREFERENCE_SCHEMA)
+        confidence = personal_profile.get("confidence", {}).get("level", "low")
+        result["status"] = "accepted" if confidence in {"medium", "high"} else "provisional"
+        result["personal_profile_confidence"] = confidence
+        return result
     if not profile:
         return result
     dimensions = profile.get("dimensions") if isinstance(profile.get("dimensions"), dict) else {}
@@ -327,7 +473,99 @@ def format_summary(requirements: dict[str, Any], template_profile: dict[str, Any
     return {"version": VERSION, "items": values, "disclosure_complete": True, "updated_at": now_iso()}
 
 
-def variation_contract(preferences: dict[str, Any], variation_seed: str) -> dict[str, Any]:
+def build_writer_genome(
+    subject: str,
+    preferences: dict[str, Any],
+    identity_key: str,
+    personal_profile: dict[str, Any] | None,
+) -> dict[str, Any]:
+    base_digest = hashlib.sha256(("writer-genome\n" + identity_key).encode("utf-8")).digest()
+    course_digest = hashlib.sha256((identity_key + "\n" + subject).encode("utf-8")).digest()
+    axes = {
+        key: choices[base_digest[index] % len(choices)]
+        for index, (key, choices) in enumerate(GENOME_AXES.items())
+    }
+    provenance = "system_assigned"
+    confidence = "medium"
+    if personal_profile:
+        provenance = "prior_report_profile"
+        confidence = str(personal_profile.get("confidence", {}).get("level", "low"))
+        features = personal_profile.get("features") if isinstance(personal_profile.get("features"), dict) else {}
+        feature_overrides = {
+            "sentence_rhythm": features.get("sentence_rhythm"),
+            "terminology_handling": features.get("terminology_handling"),
+            "person_voice": features.get("person_voice"),
+            "reflection_signature": features.get("reflection_pattern"),
+            "connector_density": features.get("connector_density"),
+            "list_usage": features.get("list_preference"),
+        }
+        axes.update({key: str(value) for key, value in feature_overrides.items() if value})
+    elif any(source == "accepted_user_profile" for source in preferences.get("sources", {}).values()):
+        provenance = "accepted_user_profile"
+        confidence = "high"
+
+    order_map = {
+        "principle_first": "principle_to_operation",
+        "procedure_first": "operation_to_result",
+        "result_first": "result_to_explanation",
+    }
+    reflection_map = {
+        "learning_process": "concept_understanding",
+        "problem_solving": "debugging_process",
+        "engineering": "implementation_tradeoff",
+        "critical_improvement": "limitation_and_improvement",
+    }
+    axes["reasoning_route"] = order_map[preferences["values"]["analysis_order"]]
+    axes["reflection_signature"] = reflection_map[preferences["values"]["reflection_depth"]]
+    capsule_id = "wc_" + hashlib.sha256((identity_key + "\nbase").encode("utf-8")).hexdigest()[:16]
+    return {
+        "version": WRITER_GENOME_VERSION,
+        "capsule_id": capsule_id,
+        "provenance": {"base": provenance, "confidence": confidence, "user_adjustable": True},
+        "student_capability": {
+            "level": preferences["values"]["writing_level"],
+            "professional_boundary": "术语和方法保持专业，但不冒充教师、研究者或行业专家",
+            "evidence_boundary": "第一人称操作、观察、问题和结论必须来自真实材料、运行结果或用户确认",
+        },
+        "stable_axes": axes,
+        "course_overlay": {
+            "subject_key": hashlib.sha256(subject.encode("utf-8")).hexdigest()[:12],
+            "term_density_adjustment": ["preserve", "slightly_lower", "slightly_higher"][course_digest[0] % 3],
+            "analysis_depth_adjustment": ["preserve", "example_led", "constraint_led"][course_digest[1] % 3],
+        },
+        "invariants": [
+            "task_facts", "course_terms", "real_evidence", "target_nodes", "heading_structure",
+            "template_fixed_content", "writer_capsule",
+        ],
+        "prohibited_strategies": [
+            "random_synonym_substitution", "demographic_or_dialect_imitation", "fabricated_personal_experience",
+            "deliberate_grammar_errors", "invented_uncertainty", "expert_impersonation", "ai_detector_evasion",
+        ],
+        "privacy": {"stores_identity_key": False, "stores_report_body": False, "stores_sample_body": False},
+    }
+
+
+def apply_preferences_to_genome(writer_genome: dict[str, Any], preferences: dict[str, Any]) -> dict[str, Any]:
+    updated = json.loads(json.dumps(writer_genome, ensure_ascii=False))
+    values = preferences["values"]
+    updated["student_capability"]["level"] = values["writing_level"]
+    updated["stable_axes"]["reasoning_route"] = {
+        "principle_first": "principle_to_operation",
+        "procedure_first": "operation_to_result",
+        "result_first": "result_to_explanation",
+    }[values["analysis_order"]]
+    updated["stable_axes"]["reflection_signature"] = {
+        "learning_process": "concept_understanding",
+        "problem_solving": "debugging_process",
+        "engineering": "implementation_tradeoff",
+        "critical_improvement": "limitation_and_improvement",
+    }[values["reflection_depth"]]
+    return updated
+
+
+def variation_contract(
+    preferences: dict[str, Any], variation_seed: str, writer_genome: dict[str, Any]
+) -> dict[str, Any]:
     values = preferences["values"]
     digest = hashlib.sha256((variation_seed + sha256_json(values)).encode("utf-8")).digest()
     emphasis_by_reflection = {
@@ -337,18 +575,106 @@ def variation_contract(preferences: dict[str, Any], variation_seed: str) -> dict
     order = values["analysis_order"]
     density = {"concise": "low", "balanced": "medium", "detailed": "high"}[values["detail_level"]]
     strength = values["variation_strength"]
+    stable = writer_genome["stable_axes"]
+    layout_archetype = LAYOUT_ARCHETYPES[digest[2] % len(LAYOUT_ARCHETYPES)]
+    layout_rule = LAYOUT_ARCHETYPE_RULES[layout_archetype]
     choices = {
         "section_emphasis": emphasis_by_reflection[values["reflection_depth"]],
         "explanation_order": order,
         "evidence_example_density": density,
         "reflection_angle": values["reflection_depth"],
         "secondary_emphasis": ["method_constraints", "result_interpretation", "implementation_decisions"][digest[0] % 3],
+        "opening_mode": stable["reasoning_route"],
+        "explanation_shape": stable["explanation_shape"],
+        "paragraph_progression": stable["paragraph_movement"],
+        "sentence_rhythm": stable["sentence_rhythm"],
+        "term_introduction": stable["terminology_handling"],
+        "evidence_habit": stable["evidence_habit"],
+        "first_person_policy": stable["person_voice"],
+        "uncertainty_expression": stable["uncertainty_style"],
+        "connector_density": stable["connector_density"],
+        "list_pattern": stable["list_usage"],
+        "closure_mode": [stable["reflection_signature"], "specific_limit", "verified_takeaway"][digest[1] % 3],
+        "revision_focus": stable["revision_focus"],
+        "layout_archetype": layout_archetype,
+        "opening_flow": layout_rule["opening_flow"],
+        "visual_density": layout_rule["visual_density"],
+        "table_role": layout_rule["table_role"],
+        "problem_evidence_position": ["after_problem", "between_problem_and_solution", "after_solution"][digest[3] % 3],
+        "summary_shape": ["paired_problem_solution", "process_reflection", "compact_issue_matrix", "narrative_with_takeaways"][digest[4] % 4],
     }
     return {
-        "version": VERSION, "variation_seed": variation_seed, "strength": strength,
+        "version": WRITER_GENOME_VERSION, "variation_seed": variation_seed, "strength": strength,
+        "writer_capsule_id": writer_genome["capsule_id"],
         "observable_axes": choices,
-        "invariants": ["facts", "course_terms", "target_nodes", "heading_structure", "template_fixed_content"],
+        "invariants": writer_genome["invariants"],
         "forbidden_strategy": "random_synonym_substitution",
+    }
+
+
+def generation_contract(object_ids: dict[str, str]) -> dict[str, Any]:
+    return {
+        "version": WRITER_GENOME_VERSION,
+        "object_refs": {
+            "preferences": object_ids["preferences"],
+            "writer_genome": object_ids["writer_genome"],
+            "variation_contract": object_ids["variation_contract"],
+            "style_card": object_ids.get("style_card") or None,
+            "personal_writing_profile": object_ids.get("personal_profile") or None,
+        },
+        "pipeline": ["fact_ledger", "discourse_plan", "draft", "identity_humanization", "deterministic_gates"],
+        "student_identity": {
+            "professional_not_expert": True,
+            "first_person_requires_evidence": True,
+            "uncertainty_requires_reason": True,
+            "no_deliberate_errors": True,
+        },
+        "humanization_policy": {
+            "mode": "identity_conditioned",
+            "preserve": ["course_terms", "verified_facts", "citations", "code", "formulas", "writer_genome_axes"],
+            "remove_clusters": [
+                "significance_inflation", "promotional_language", "vague_attribution", "negative_parallelism",
+                "formulaic_connectors", "generic_conclusion", "chatbot_trace", "empty_emphasis",
+            ],
+            "domain_exemptions": ["required_template_headings", "technical_passive_voice", "fixed_course_phrases"],
+            "no_new_facts": True,
+        },
+        "layout_policy": {
+            "template_boundary": "preserve_fixed_template_regions_but_vary_flow_inside_writable_regions",
+            "archetype_source": "variation_contract.observable_axes.layout_archetype",
+            "plan_before_prose": True,
+            "required_form_factors": [
+                "prose", "numbered_figure_placeholder_when_visual_evidence_is_expected",
+                "table_when_row_column_data_exists",
+            ],
+            "single_asset_per_placeholder": True,
+            "avoid_fixed_three_three_three_summary": True,
+            "table_gate": "use_tables_for_repeated_comparable_records_and_reserve_a_numbered_table_placeholder_when_real_data_is_pending",
+        },
+        "caption_reference_policy": {
+            "independent_sequences": ["figure", "table"],
+            "numbering": "chapter_or_section_aware",
+            "placeholder_format": "【图 2-1：名称；待补：具体截图或绘图要求】 or 【表 2-1：名称；待补：字段或数据来源】",
+            "caption_known_before_insertion": True,
+            "prose_cross_reference_required": True,
+            "forbid_multi_asset_placeholder": True,
+        },
+        "problem_evidence_policy": {
+            "reserve_when_helpful": ["error_message", "unexpected_output", "configuration_state", "before_after_result"],
+            "allowed_positions": ["after_problem", "between_problem_and_solution", "after_solution"],
+            "requires_number_title_and_cross_reference": True,
+            "do_not_fabricate_evidence": True,
+        },
+        "candidate_policy": {
+            "default_count": 1,
+            "high_collision_count": 3,
+            "rerank_by": [
+                "fact_coverage", "writer_genome_adherence", "structural_distance",
+                "cross_report_distance", "student_authenticity",
+            ],
+        },
+        "required_quality_gates": sorted(REQUIRED_QUALITY_GATES),
+        "privacy": {"report_body_local_only": True, "sample_body_not_persisted": True, "cloud_style_id_only": True},
     }
 
 
@@ -367,17 +693,32 @@ def preference_questions(preferences: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def make_preflight_summary(subject: str, preferences: dict[str, Any], formats: dict[str, Any],
-                           requirements: dict[str, Any], variation: dict[str, Any]) -> dict[str, Any]:
+                           requirements: dict[str, Any], variation: dict[str, Any],
+                           writer_genome: dict[str, Any]) -> dict[str, Any]:
     return {
         "subject": subject,
         "preferences": preferences["values"],
         "preference_sources": preferences["sources"],
+        "personalization": {
+            "capsule_id": writer_genome["capsule_id"],
+            "source": writer_genome["provenance"]["base"],
+            "confidence": writer_genome["provenance"]["confidence"],
+            "sample_body_stored": False,
+            "user_adjustable": True,
+        },
+        "writer_genome_summary": writer_genome["stable_axes"],
         "format_summary": formats["items"],
         "requirements_status": {
             "missing": requirements.get("missing", []),
             "conflicts": requirements.get("conflicts", []),
         },
         "variation": variation["observable_axes"],
+        "humanization": {
+            "mode": "identity_conditioned",
+            "no_new_facts": True,
+            "student_boundary": writer_genome["student_capability"]["professional_boundary"],
+            "ai_detector_is_gate": False,
+        },
         "routine_checkpoints": ["preflight", "final_review"],
     }
 
@@ -423,7 +764,8 @@ def response(state: dict[str, Any], plan: dict[str, Any], **extra: Any) -> dict[
 
 def prepare(workspace: Path, idempotency_key: str, subject: str, mode: str,
             requirements_path: Path, template_profile_path: Path,
-            writing_profile_path: Path | None = None, style_card_path: Path | None = None) -> dict[str, Any]:
+            writing_profile_path: Path | None = None, style_card_path: Path | None = None,
+            personal_profile_path: Path | None = None, style_identity: str | None = None) -> dict[str, Any]:
     key = validate_idempotency_key(idempotency_key)
     if mode == "fast":
         raise AutopilotError("MODE_NOT_ENABLED", "fast 模式将在完成 3 次无人协助真实试用后开放。")
@@ -446,10 +788,15 @@ def prepare(workspace: Path, idempotency_key: str, subject: str, mode: str,
         template = load_object(template_profile_path, "template profile")
         profile = load_object(writing_profile_path, "writing profile") if writing_profile_path else None
         style_card = load_object(style_card_path, "style card") if style_card_path else None
-        preferences = preferences_from_profile(subject, profile)
+        personal_profile = load_object(personal_profile_path, "personal writing profile") if personal_profile_path else None
+        if personal_profile:
+            validate_personal_profile(personal_profile)
+        identity_key = style_identity or sha256_json({"workspace": str(workspace.resolve()), "subject": subject})
+        preferences = preferences_from_profile(subject, profile, personal_profile, identity_key)
         formats = format_summary(requirements, template)
         seed = secrets.token_hex(8)
-        variation = variation_contract(preferences, seed)
+        writer_genome = build_writer_genome(subject, preferences, identity_key, personal_profile)
+        variation = variation_contract(preferences, seed, writer_genome)
         questions = preference_questions(preferences)
         requirements_conflicts = requirements.get("conflicts", [])
         requirements_missing = requirements.get("missing", [])
@@ -470,8 +817,14 @@ def prepare(workspace: Path, idempotency_key: str, subject: str, mode: str,
 
         object_ids = {
             "preferences": "preferences-v1", "format_summary": "format-v1",
-            "variation_contract": "variation-v1", "interaction_plan": "",
+            "writer_genome": "writer-genome-v3", "variation_contract": "variation-v3",
+            "generation_contract": "generation-contract-v3", "interaction_plan": "",
         }
+        if style_card:
+            object_ids["style_card"] = "style-card-v1"
+        if personal_profile:
+            object_ids["personal_profile"] = "personal-profile-v1"
+        host_contract = generation_contract(object_ids)
         state = {
             "version": VERSION, "session_id": "s_" + uuid.uuid4().hex[:16],
             "report_id": "r_" + uuid.uuid4().hex[:12], "subject": subject,
@@ -479,13 +832,19 @@ def prepare(workspace: Path, idempotency_key: str, subject: str, mode: str,
             "orchestration_state": "collecting_preferences" if questions else "preflight_pending",
             "orchestration_mode": mode, "current_checkpoint": None if questions else "preflight",
             "profile_status": preferences["status"], "repair_attempts": 0,
-            "variation_seed": seed, "object_ids": object_ids,
+            "variation_seed": seed, "style_capsule_id": writer_genome["capsule_id"], "object_ids": object_ids,
             "active_confirmation": None, "created_at": now_iso(), "updated_at": now_iso(),
         }
         atomic_write_json(object_path(workspace, object_ids["preferences"]), preferences)
         atomic_write_json(object_path(workspace, object_ids["format_summary"]), formats)
+        atomic_write_json(object_path(workspace, object_ids["writer_genome"]), writer_genome)
         atomic_write_json(object_path(workspace, object_ids["variation_contract"]), variation)
-        preflight = make_preflight_summary(subject, preferences, formats, requirements, variation)
+        atomic_write_json(object_path(workspace, object_ids["generation_contract"]), host_contract)
+        if style_card:
+            atomic_write_json(object_path(workspace, object_ids["style_card"]), style_card)
+        if personal_profile:
+            atomic_write_json(object_path(workspace, object_ids["personal_profile"]), personal_profile)
+        preflight = make_preflight_summary(subject, preferences, formats, requirements, variation, writer_genome)
         if questions:
             plan = {"questions": questions, "checkpoint": None, "exceptions": [],
                     "next_action": "ask_user", "reason_code": "PREFERENCES_INCOMPLETE",
@@ -550,8 +909,14 @@ def answer_questions(workspace: Path, state_version: int, idempotency_key: str,
             )
         preferences["updated_at"] = now_iso()
         atomic_write_json(object_path(workspace, state["object_ids"]["preferences"]), preferences)
-        variation = variation_contract(preferences, state["variation_seed"])
+        writer_genome = load_object(object_path(workspace, state["object_ids"]["writer_genome"]), "writer genome")
+        writer_genome = apply_preferences_to_genome(writer_genome, preferences)
+        atomic_write_json(object_path(workspace, state["object_ids"]["writer_genome"]), writer_genome)
+        variation = variation_contract(preferences, state["variation_seed"], writer_genome)
         atomic_write_json(object_path(workspace, state["object_ids"]["variation_contract"]), variation)
+        atomic_write_json(
+            object_path(workspace, state["object_ids"]["generation_contract"]), generation_contract(state["object_ids"])
+        )
         previous = state["orchestration_state"]
         if previous == "exception_pending":
             selected = {item["question_id"]: item.get("value") for item in answers}
@@ -577,11 +942,7 @@ def answer_questions(workspace: Path, state_version: int, idempotency_key: str,
             return result
 
         formats = load_object(object_path(workspace, state["object_ids"]["format_summary"]), "format summary")
-        preflight = {
-            "subject": state["subject"], "preferences": preferences["values"],
-            "preference_sources": preferences["sources"], "format_summary": formats["items"],
-            "variation": variation["observable_axes"], "routine_checkpoints": ["preflight", "final_review"],
-        }
+        preflight = make_preflight_summary(state["subject"], preferences, formats, {}, variation, writer_genome)
         state["state_version"] += 1
         state["orchestration_state"] = "preflight_pending"
         state["current_checkpoint"] = "preflight"
@@ -659,6 +1020,103 @@ def placement_exception(artifacts: dict[str, Any]) -> tuple[str, dict[str, Any]]
     return None
 
 
+def host_artifact_plan(state: dict[str, Any], reason_code: str = "CONTENT_PACKAGE_REQUIRED") -> dict[str, Any]:
+    return {
+        "questions": [],
+        "checkpoint": None,
+        "exceptions": [],
+        "next_action": "await_host_artifact",
+        "reason_code": reason_code,
+        "required_artifacts": [
+            "placement", "content_package_ready", "fact_ledger", "draft",
+            "humanization_audit", "layout_audit", "diversity_report", "quality_gates",
+        ],
+        "required_object_ids": {
+            key: state["object_ids"][key]
+            for key in ("preferences", "writer_genome", "variation_contract", "generation_contract")
+        },
+        "host_generation_sequence": [
+            "read_required_objects", "build_fact_ledger", "plan_layout_and_caption_registry",
+            "plan_before_prose", "draft", "identity_conditioned_humanization",
+            "run_layout_caption_and_diversity_gates", "run_deterministic_gates",
+        ],
+    }
+
+
+def validated_quality_gates(artifacts: dict[str, Any]) -> dict[str, Any] | None:
+    draft = artifacts.get("draft")
+    gates = artifacts.get("quality_gates")
+    if not isinstance(draft, dict):
+        return gates if isinstance(gates, dict) else None
+    if not isinstance(gates, dict):
+        return {"status": "retryable_failure", "reason": "缺少结构化 quality_gates。"}
+    if gates.get("status") in {"retryable_failure", "hard_failure"}:
+        return gates
+    passed = gates.get("passed_gate_ids")
+    if not isinstance(passed, list) or not all(isinstance(item, str) for item in passed):
+        return {"status": "retryable_failure", "reason": "quality_gates 缺少 passed_gate_ids。"}
+    missing_gates = sorted(REQUIRED_QUALITY_GATES - set(passed))
+    if missing_gates:
+        return {
+            "status": "retryable_failure",
+            "reason": "以下质量门禁尚未提供通过证据：" + "、".join(missing_gates),
+            "missing_gate_ids": missing_gates,
+        }
+    fact_ledger = artifacts.get("fact_ledger")
+    if not (
+        isinstance(fact_ledger, dict)
+        and isinstance(fact_ledger.get("object_id"), str)
+        and re.fullmatch(r"[0-9a-f]{64}", str(fact_ledger.get("sha256", "")))
+        and fact_ledger.get("stores_report_body") is False
+    ):
+        return {"status": "retryable_failure", "reason": "fact_ledger 缺少对象 ID、哈希或隐私声明。"}
+    humanization = artifacts.get("humanization_audit")
+    if not isinstance(humanization, dict) or humanization.get("status") != "pass":
+        return {"status": "retryable_failure", "reason": "去 AI 模板腔审计尚未通过。"}
+    layout = artifacts.get("layout_audit")
+    if not (
+        isinstance(layout, dict)
+        and layout.get("status") == "pass"
+        and isinstance(layout.get("structure_fingerprint"), dict)
+        and layout.get("caption_cross_reference_ok") is True
+        and layout.get("single_asset_per_placeholder_ok") is True
+        and layout.get("table_decision_recorded") is True
+        and layout.get("problem_evidence_decision_recorded") is True
+        and layout.get("unresolved_template_cues") == []
+    ):
+        return {
+            "status": "retryable_failure",
+            "reason": "结构、图表编号/交叉引用、表格取舍或问题证据占位审计尚未通过。",
+        }
+    diversity = artifacts.get("diversity_report")
+    if not isinstance(diversity, dict):
+        return {"status": "retryable_failure", "reason": "缺少本机历史或批次差异报告。"}
+    coverage = diversity.get("coverage")
+    if not (
+        isinstance(coverage, dict)
+        and coverage.get("status") in {"evaluated", "baseline_unavailable"}
+        and isinstance(coverage.get("comparison_count"), int)
+        and coverage.get("comparison_count") >= 0
+    ):
+        return {"status": "retryable_failure", "reason": "跨报告差异报告缺少真实覆盖范围。"}
+    expected_claim = (
+        "collision_checked_against_available_baseline"
+        if coverage["status"] == "evaluated"
+        else "no_baseline_so_cross_report_difference_not_proven"
+    )
+    if (
+        (coverage["status"] == "evaluated" and coverage["comparison_count"] < 1)
+        or (coverage["status"] == "baseline_unavailable" and coverage["comparison_count"] != 0)
+        or coverage.get("claim_boundary") != expected_claim
+    ):
+        return {"status": "retryable_failure", "reason": "跨报告差异报告的覆盖状态与比较数量不一致。"}
+    if diversity.get("gate") == "blocked":
+        return {"status": "hard_failure", "reason": "跨报告碰撞门禁命中，必须换内容组织后重新生成。"}
+    if diversity.get("gate") != "pass":
+        return {"status": "retryable_failure", "reason": "跨报告差异报告尚未通过。"}
+    return dict(gates, status="pass")
+
+
 def advance(workspace: Path, state_version: int, idempotency_key: str,
             confirmation_token: str | None, artifacts: dict[str, Any]) -> dict[str, Any]:
     key = validate_idempotency_key(idempotency_key)
@@ -684,11 +1142,7 @@ def advance(workspace: Path, state_version: int, idempotency_key: str,
             state["orchestration_state"] = "running"
             state["current_checkpoint"] = None
             state["state"] = "requirements_confirmed"
-            plan_data = {
-                "questions": [], "checkpoint": None, "exceptions": [],
-                "next_action": "await_host_artifact", "reason_code": "CONTENT_PACKAGE_REQUIRED",
-                "required_artifacts": ["placement", "content_package_ready", "draft", "quality_gates"],
-            }
+            plan_data = host_artifact_plan(state)
         elif previous == "running":
             style_calibration = artifacts.get("style_calibration")
             style_confidence = style_calibration.get("confidence") if isinstance(style_calibration, dict) else None
@@ -736,14 +1190,18 @@ def advance(workspace: Path, state_version: int, idempotency_key: str,
                         plan_data = {"questions": [], "checkpoint": None, "exceptions": [detail],
                                      "next_action": "blocked", "reason_code": "PLACEMENT_BLOCKED"}
                 else:
-                    gates = artifacts.get("quality_gates")
+                    gates = validated_quality_gates(artifacts)
                     if isinstance(gates, dict) and gates.get("status") == "retryable_failure":
                         state["repair_attempts"] += 1
                         if state["repair_attempts"] <= 2:
-                            plan_data = {"questions": [], "checkpoint": None, "exceptions": [],
-                                         "next_action": "await_host_artifact", "reason_code": "CONTENT_REPAIR_REQUIRED",
-                                         "repair_attempt": state["repair_attempts"],
-                                         "repair_invariants": ["facts", "target_nodes", "heading_structure", "variation_seed"]}
+                            plan_data = host_artifact_plan(state, "CONTENT_REPAIR_REQUIRED")
+                            plan_data.update({
+                                "repair_attempt": state["repair_attempts"],
+                                "repair_reason": gates.get("reason"),
+                                "repair_invariants": [
+                                    "facts", "target_nodes", "heading_structure", "variation_seed", "writer_capsule_id"
+                                ],
+                            })
                         else:
                             state["orchestration_state"] = "exception_pending"
                             question = {
@@ -762,6 +1220,10 @@ def advance(workspace: Path, state_version: int, idempotency_key: str,
                         draft = artifacts["draft"]
                         final_summary = {
                             "artifact_id": draft["object_id"], "sha256": draft["sha256"],
+                            "writer_capsule_id": state["style_capsule_id"],
+                            "humanization_status": artifacts["humanization_audit"]["status"],
+                            "cross_report_diversity_gate": artifacts["diversity_report"]["gate"],
+                            "cross_report_coverage": artifacts["diversity_report"]["coverage"],
                             "assumptions": artifacts.get("assumptions", []),
                             "warnings": artifacts.get("warnings", []),
                             "wps_review_checklist": draft.get("wps_review_checklist", ["写入位置", "分页与行距", "图片和公式位置"]),
@@ -775,9 +1237,7 @@ def advance(workspace: Path, state_version: int, idempotency_key: str,
                                      "summary_sha256": sha256_json(final_summary), "summary": final_summary},
                                      "exceptions": [], "next_action": "deliver_preview", "reason_code": "FINAL_REVIEW_READY"}
                     else:
-                        plan_data = {"questions": [], "checkpoint": None, "exceptions": [],
-                                     "next_action": "await_host_artifact", "reason_code": "CONTENT_PACKAGE_REQUIRED",
-                                     "required_artifacts": ["placement", "content_package_ready", "draft", "quality_gates"]}
+                        plan_data = host_artifact_plan(state)
         elif previous == "exception_pending":
             if artifacts.get("action") == "cancel":
                 state["orchestration_state"] = "cancelled"

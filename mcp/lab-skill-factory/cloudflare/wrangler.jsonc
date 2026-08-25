@@ -25,6 +25,7 @@
   "vars": {
     "PRODUCT_ID": "lab-factory-1",
     "PRICE_CENTS": "990",
+    "PERMANENT_PRICE_CENTS": "4990",
     "REFUND_DAYS": "7",
     "SUPPORT_CONTACT": "售后QQ群：923937311",
     "LEASE_KEY_ID": "lfleasepk_baf99d3b6ee0b6be"

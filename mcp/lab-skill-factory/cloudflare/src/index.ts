@@ -7,6 +7,7 @@ interface Env {
   LEASE_PRIVATE_KEY_B64: string;
   PRODUCT_ID: string;
   PRICE_CENTS: string;
+  PERMANENT_PRICE_CENTS?: string;
   REFUND_DAYS: string;
   SUPPORT_CONTACT: string;
   LEASE_KEY_ID: string;
@@ -23,6 +24,7 @@ class HttpError extends Error {
 const encoder = new TextEncoder();
 const KEY_STATES = new Set(["unused", "active", "refund_requested", "refunded", "banned"]);
 const ORDER_STATES = new Set(["payment_pending", "payment_submitted", "payment_rejected", "paid", "key_issued", "delivered", "refund_requested", "refunded"]);
+const LICENSE_PLANS = new Set(["experience", "permanent"]);
 
 function nowIso(): string {
   return new Date().toISOString().replace(/\.\d{3}Z$/, "+00:00");
@@ -211,6 +213,8 @@ async function orderValue(env: Env, row: Row, publicView: boolean): Promise<Row>
 }
 
 async function checkoutConfig(env: Env): Promise<Response> {
+  const experiencePrice = Number(env.PRICE_CENTS || "990");
+  const permanentPrice = Number(env.PERMANENT_PRICE_CENTS || "4990");
   return json(200, {
     ok: true,
     product: {
@@ -221,13 +225,17 @@ async function checkoutConfig(env: Env): Promise<Response> {
       refund_days: Number(env.REFUND_DAYS),
       self_service_refunds: false,
       refund_policy: "数字化商品密钥交付后原则上不支持无理由退款；重复付款、无法激活且无法修复、重大功能缺陷或法律另有规定的情形，请联系售后人工处理。",
-      entitlement: "当前 beta 永久使用，30 天内可更新，升级正式创始版抵扣 9.9 元",
+      entitlement: "体验版可生成 3 份报告，不包含 Skill 凝练",
     },
+    plans: [
+      {id: "experience", name: "体验版", amount_cents: experiencePrice, usage_limit: 3, skill_condensation: false},
+      {id: "permanent", name: "永久版", amount_cents: permanentPrice, usage_limit: null, skill_condensation: true},
+    ],
     payment_providers: [{
       id: "alipay",
       label: "支付宝经营码",
       payment_url: "",
-      instructions: "使用支付宝扫描经营码并支付 9.9 元",
+      instructions: "使用支付宝扫描经营码，并按订单金额付款",
       qr_image_url: "/payment-assets/alipay.png",
       verification: "manual",
       available: true,
@@ -241,16 +249,18 @@ async function createOrder(request: Request, env: Env): Promise<Response> {
   const input = await body(request);
   const contact = text(input.contact, "contact", 160, true);
   const provider = text(input.payment_provider, "payment_provider", 40, true);
+  const plan = text(input.plan ?? "experience", "plan", 32, true);
+  if (!LICENSE_PLANS.has(plan)) throw new HttpError(400, "INVALID_PLAN", "plan must be experience or permanent");
   if (provider !== "alipay") throw new HttpError(400, "PAYMENT_PROVIDER_UNAVAILABLE", "selected payment provider is unavailable");
   const id = randomId("lforder_");
   const token = randomToken();
   const current = nowIso();
   await env.DB.batch([
-    env.DB.prepare(`INSERT INTO orders(id,status_token_hash,status,product_id,amount_cents,currency,payment_provider,contact,refund_days,created_at,updated_at)
-      VALUES(?,?,'payment_pending',?,?,?,?,?,?,?,?)`).bind(
-      id, await sha256(token), env.PRODUCT_ID, Number(env.PRICE_CENTS), "CNY", provider, contact, Number(env.REFUND_DAYS), current, current,
+    env.DB.prepare(`INSERT INTO orders(id,status_token_hash,status,product_id,amount_cents,currency,payment_provider,contact,refund_days,created_at,updated_at,plan)
+      VALUES(?,?,'payment_pending',?,?,?,?,?,?,?,?,?)`).bind(
+      id, await sha256(token), env.PRODUCT_ID, plan === "experience" ? Number(env.PRICE_CENTS || "990") : Number(env.PERMANENT_PRICE_CENTS || "4990"), "CNY", provider, contact, Number(env.REFUND_DAYS), current, current, plan,
     ),
-    orderAudit(env, id, "order_created", "customer", "", {provider}),
+    orderAudit(env, id, "order_created", "customer", "", {provider, plan}),
   ]);
   const row = await env.DB.prepare("SELECT * FROM orders WHERE id=?").bind(id).first<Row>();
   return json(201, {ok: true, status_token: token, status_url: `/buy#order=${token}`, order: await orderValue(env, row!, true)});
@@ -303,7 +313,12 @@ async function importLeasePrivate(env: Env): Promise<CryptoKey> {
   return crypto.subtle.importKey("pkcs8", pkcs8, {name: "Ed25519"}, false, ["sign"]);
 }
 
-async function issueLease(env: Env, keyId: string, installId: string, issued = new Date()): Promise<Row> {
+async function usageCount(env: Env, keyId: string): Promise<number> {
+  const row = await env.DB.prepare("SELECT COUNT(*) AS count FROM usage_events WHERE license_key_id=?").bind(keyId).first<Row>();
+  return Number(row?.count || 0);
+}
+
+async function issueLease(env: Env, keyId: string, installId: string, issued = new Date(), plan = "permanent", usageLimit: number | null = null, count = 0): Promise<Row> {
   const payload: Row = {
     format: "lab-factory-online-lease",
     version: 1,
@@ -316,6 +331,10 @@ async function issueLease(env: Env, keyId: string, installId: string, issued = n
     refresh_after: addHours(issued, 6),
     expires_at: addHours(issued, 24),
     issuer_key_id: env.LEASE_KEY_ID,
+    plan,
+    usage_limit: plan === "experience" ? usageLimit : null,
+    usage_count: count,
+    features: {skill_condensation: plan === "permanent"},
   };
   const signature = await crypto.subtle.sign({name: "Ed25519"}, await importLeasePrivate(env), encoder.encode(canonical(payload)));
   return {payload, signature: b64url(new Uint8Array(signature))};
@@ -351,20 +370,20 @@ async function activate(request: Request, env: Env): Promise<Response> {
     ok: true,
     status: "active",
     activation_token: token,
-    lease: await issueLease(env, String(row.id), installId, current),
+    lease: await issueLease(env, String(row.id), installId, current, String(row.plan || "permanent"), row.usage_limit === null || row.usage_limit === undefined ? null : Number(row.usage_limit), await usageCount(env, String(row.id))),
     refund_deadline: row.refund_deadline,
     refund_days: row.refund_days,
   });
 }
 
-async function authenticatedProof(request: Request, env: Env, expectedAction: string): Promise<{row: Row; proof: Row; nonce: string; now: Date}> {
+async function authenticatedProof(request: Request, env: Env, expectedAction: string, extraFields: string[] = []): Promise<{row: Row; proof: Row; nonce: string; now: Date}> {
   const input = await body(request);
   const token = text(input.activation_token, "activation_token", 128, true);
   const proof = input.proof;
   const signature = input.signature;
   if (!proof || Array.isArray(proof) || typeof proof !== "object" || typeof signature !== "string") throw new HttpError(400, "MISSING_PROOF", "signed installation proof is required");
   const message = proof as Row;
-  const required = ["action", "activation_token", "install_id", "nonce", "timestamp"];
+  const required = ["action", "activation_token", "install_id", "nonce", "timestamp", ...extraFields].sort();
   if (Object.keys(message).sort().join(",") !== required.join(",") || message.action !== expectedAction || message.activation_token !== token) throw new HttpError(400, "INVALID_PROOF", "installation proof does not match request");
   const installId = text(message.install_id, "install_id", 96, true);
   const nonce = text(message.nonce, "nonce", 128, true);
@@ -404,7 +423,40 @@ async function refreshLease(request: Request, env: Env): Promise<Response> {
     env.DB.prepare("UPDATE license_keys SET last_seen_at=? WHERE id=?").bind(current, verified.row.id),
     audit(env, String(verified.row.id), "lease_refreshed", "client"),
   ]);
-  return json(200, {ok: true, status: "active", lease: await issueLease(env, String(verified.row.id), String(verified.row.install_id), verified.now)});
+  return json(200, {ok: true, status: "active", lease: await issueLease(
+    env, String(verified.row.id), String(verified.row.install_id), verified.now,
+    String(verified.row.plan || "permanent"), verified.row.usage_limit === null || verified.row.usage_limit === undefined ? null : Number(verified.row.usage_limit),
+    await usageCount(env, String(verified.row.id)),
+  )});
+}
+
+async function consumeUsage(request: Request, env: Env): Promise<Response> {
+  const verified = await authenticatedProof(request, env, "consume_usage", ["usage_id"]);
+  if (verified.row.status !== "active") throw new HttpError(403, "KEY_BLOCKED", `license key is ${verified.row.status}`);
+  const usageId = text(verified.proof.usage_id, "usage_id", 128, true);
+  const keyId = String(verified.row.id);
+  const existing = await env.DB.prepare("SELECT id FROM usage_events WHERE license_key_id=? AND usage_id=?").bind(keyId, usageId).first<Row>();
+  let charged = false;
+  if (!existing) {
+    const inserted = await env.DB.prepare(`INSERT INTO usage_events(id,license_key_id,usage_id,used_at)
+      SELECT ?,?,?,? WHERE EXISTS (
+        SELECT 1 FROM license_keys k WHERE k.id=? AND k.status='active'
+        AND (k.usage_limit IS NULL OR (SELECT COUNT(*) FROM usage_events u WHERE u.license_key_id=k.id) < k.usage_limit)
+      )`).bind(randomId("lfusage_"), keyId, usageId, nowIso(), keyId).run();
+    charged = Number(inserted.meta.changes || 0) === 1;
+    if (!charged) throw new HttpError(403, "USAGE_LIMIT_REACHED", "experience license has used all three reports");
+  }
+  const count = await usageCount(env, keyId);
+  const limit = verified.row.usage_limit === null || verified.row.usage_limit === undefined ? null : Number(verified.row.usage_limit);
+  await consumeNonce(env, verified.row, verified.nonce, verified.now, [
+    env.DB.prepare("UPDATE license_keys SET last_seen_at=? WHERE id=?").bind(nowIso(), keyId),
+    audit(env, keyId, "usage_consumed", "client", "", {usage_id: usageId, usage_count: count, charged}),
+  ]);
+  return json(200, {
+    ok: true, status: "active", charged, usage_count: count,
+    remaining_uses: limit === null ? null : Math.max(0, limit - count),
+    lease: await issueLease(env, keyId, String(verified.row.install_id), verified.now, String(verified.row.plan || "permanent"), limit, count),
+  });
 }
 
 async function requestClientRefund(request: Request, env: Env): Promise<Response> {
@@ -446,11 +498,11 @@ async function adminOrderAction(request: Request, env: Env, id: string, action: 
       const keyId = await orderLicenseKeyId(id);
       try {
         await env.DB.batch([
-          env.DB.prepare(`INSERT INTO license_keys(id,key_hash,key_suffix,status,label,customer_ref,refund_days,product_id,created_at,sent_at)
-            VALUES(?,?,?,'unused','购买页自动发货',?,?,?,?,?)`).bind(keyId, await hmacHex(env.KEY_PEPPER, plaintext), plaintext.slice(-4), id, Number(row.refund_days), env.PRODUCT_ID, time, time),
+          env.DB.prepare(`INSERT INTO license_keys(id,key_hash,key_suffix,status,label,customer_ref,refund_days,product_id,created_at,sent_at,plan,usage_limit)
+            VALUES(?,?,?,'unused','购买页自动发货',?,?,?,?,?,?,?)`).bind(keyId, await hmacHex(env.KEY_PEPPER, plaintext), plaintext.slice(-4), id, Number(row.refund_days), env.PRODUCT_ID, time, time, String(row.plan || "experience"), row.plan === "permanent" ? null : 3),
           env.DB.prepare(`UPDATE orders SET status='delivered',paid_at=?,delivered_at=?,updated_at=?,admin_reason='',license_key_id=?,delivery_key_version='derived-v1'
             WHERE id=? AND status='payment_submitted'`).bind(time, time, time, keyId, id),
-          audit(env, keyId, "key_created", "admin", "semi-automatic order delivery", {refund_days: row.refund_days}),
+          audit(env, keyId, "key_created", "admin", "semi-automatic order delivery", {refund_days: row.refund_days, plan: row.plan || "experience"}),
           audit(env, keyId, "key_sent", "system", "displayed on authenticated order page"),
           orderAudit(env, id, "payment_confirmed", "admin", reason),
           orderAudit(env, id, "key_issued", "system", "semi-automatic delivery", {license_key_id: keyId}),
@@ -484,10 +536,10 @@ async function adminOrderAction(request: Request, env: Env, id: string, action: 
       const keyId = randomId("lfkey_");
       try {
         await env.DB.batch([
-          env.DB.prepare(`INSERT INTO license_keys(id,key_hash,key_suffix,status,label,customer_ref,refund_days,product_id,created_at)
-            VALUES(?,?,?,'unused','购买页订单',?,?,?,?)`).bind(keyId, await hmacHex(env.KEY_PEPPER, plaintext), plaintext.slice(-4), id, Number(row.refund_days), env.PRODUCT_ID, time),
+          env.DB.prepare(`INSERT INTO license_keys(id,key_hash,key_suffix,status,label,customer_ref,refund_days,product_id,created_at,plan,usage_limit)
+            VALUES(?,?,?,'unused','购买页订单',?,?,?,?,?,?)`).bind(keyId, await hmacHex(env.KEY_PEPPER, plaintext), plaintext.slice(-4), id, Number(row.refund_days), env.PRODUCT_ID, time, String(row.plan || "experience"), row.plan === "permanent" ? null : 3),
           env.DB.prepare("UPDATE orders SET status='key_issued',license_key_id=?,updated_at=? WHERE id=? AND status='paid'").bind(keyId, time, id),
-          audit(env, keyId, "key_created", "admin", "", {refund_days: row.refund_days}),
+          audit(env, keyId, "key_created", "admin", "", {refund_days: row.refund_days, plan: row.plan || "experience"}),
           orderAudit(env, id, "key_issued", "admin", "", {license_key_id: keyId}),
         ]);
       } catch (error) {
@@ -557,10 +609,12 @@ async function createKey(request: Request, env: Env): Promise<Response> {
   const plain = activationKey();
   const id = randomId("lfkey_");
   const current = nowIso();
+  const plan = text(input.plan ?? "permanent", "plan", 32, true);
+  if (!LICENSE_PLANS.has(plan)) throw new HttpError(400, "INVALID_PLAN", "plan must be experience or permanent");
   await env.DB.batch([
-    env.DB.prepare(`INSERT INTO license_keys(id,key_hash,key_suffix,status,label,customer_ref,refund_days,product_id,created_at)
-      VALUES(?,?,?,'unused',?,?,?,?,?)`).bind(id, await hmacHex(env.KEY_PEPPER, plain), plain.slice(-4), text(input.label, "label", 120), text(input.customer_ref, "customer_ref", 120), refundDays, env.PRODUCT_ID, current),
-    audit(env, id, "key_created", "admin", "", {refund_days: refundDays}),
+    env.DB.prepare(`INSERT INTO license_keys(id,key_hash,key_suffix,status,label,customer_ref,refund_days,product_id,created_at,plan,usage_limit)
+      VALUES(?,?,?,'unused',?,?,?,?,?,?,?)`).bind(id, await hmacHex(env.KEY_PEPPER, plain), plain.slice(-4), text(input.label, "label", 120), text(input.customer_ref, "customer_ref", 120), refundDays, env.PRODUCT_ID, current, plan, plan === "experience" ? 3 : null),
+    audit(env, id, "key_created", "admin", "", {refund_days: refundDays, plan}),
   ]);
   return json(201, {ok: true, activation_key: plain, warning: "明文密钥只返回这一次，请立即通过你的私密渠道发送给用户。", key: await getAdminKey(id, env)});
 }
@@ -650,6 +704,7 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (request.method === "POST" && path === "/api/order/refund") return requestOrderRefund(request, env);
   if (request.method === "POST" && path === "/api/activate") return activate(request, env);
   if (request.method === "POST" && path === "/api/lease/refresh") return refreshLease(request, env);
+  if (request.method === "POST" && path === "/api/usage/consume") return consumeUsage(request, env);
   if (request.method === "POST" && path === "/api/refunds/request") return requestClientRefund(request, env);
 
   if (request.method === "GET" && (path === "/admin/control.js" || path === "/admin/control.css")) {

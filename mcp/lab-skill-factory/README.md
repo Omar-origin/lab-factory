@@ -4,20 +4,28 @@ Lab Factory 1.x 是面向课程实验报告工作流的本地 MCP 工具。当�
 
 ## v2.1 报告自动驾驶
 
-新报告以可用 DOCX 为产品入口：首次确认 8 维稳定偏好并完整披露模板/默认格式，之后自动推进低风险步骤，只在结构变化、低置信度定位、硬门禁和最终 DOCX 处暂停。专属 Skill 在报告完成后以学习摘要形式受控更新。
+新报告以可用 DOCX 为产品入口。首次使用可选提供 1–3 份本人旧实验报告做本地写作校准；没有时按安装身份分配稳定 writer capsule。系统在 preflight 完整披露写作身份、报告级变化、身份化去模板腔策略和模板/默认格式，之后自动推进低风险步骤，只在结构变化、低置信度定位、事实或差异化硬门禁和最终 DOCX 处暂停。专属 Skill 在报告完成后以学习摘要形式受控更新，旧报告和本次报告正文都不写入画像或 Skill。
 
 主要 MCP 工具：
 
+- `lab_factory_v2_analyze_writing_samples`（可选；首次校准，任意科目 1–3 份）
 - `lab_factory_v2_prepare_autopilot`
 - `lab_factory_v2_answer_questions`
 - `lab_factory_v2_confirm_checkpoint`
 - `lab_factory_v2_advance_autopilot`
 - `lab_factory_v2_autopilot_status`
+- `lab_factory_v2_humanization_audit`
+- `lab_factory_v2_document_structure_audit`
+- `lab_factory_v2_cohort_similarity`
+
+每份报告在正文生成前都会选定结构原型并建立图表登记表。图片、截图、绘图和表格按单项占位，预先给出编号、名称和正文引用；存在真实行列数据时会保留表格或编号表格占位。跨报告比较同时检查文字与结构流，因此仅替换题目、类名和数据库名而复用同一排版骨架会被阻止。
 
 默认使用 `balanced`，正常任务只有 preflight 和最终 DOCX 两个常规确认点。旧 v2.0 会话继续使用 strict 流程；`fast` 暂未开放。
 
 ## 当前商业授权
 
+- 同一个 Windows/macOS 安装包支持两种密钥：9.9 元体验版可创建 3 个报告会话且不能凝练/更新 Skill；49.9 元永久版不限报告次数并解锁 Skill 凝练。
+- 体验版额度按服务端的稳定报告 ID 幂等记账，重试不重复扣次，重装不会恢复额度；因此创建新的体验版报告时必须能连接授权中控。
 - 用户从独立 `/buy` 页面创建订单，通过支付宝经营码付款；GitHub 只提供购买链接和发行说明。
 - 首发暂只开放支付宝经营码，售后与激活协助QQ群为 `923937311`。
 - 用户提交交易号/备注和付款时间，你在商户记录中人工核款，不接收付款截图。

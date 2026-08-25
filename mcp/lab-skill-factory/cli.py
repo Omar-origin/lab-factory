@@ -333,6 +333,35 @@ def main() -> int:
     writing_v2.add_argument("--preset", choices=["balanced", "concise", "technical", "personal"], default="balanced")
     writing_v2.add_argument("--overrides-json", default="{}")
 
+    sample_profile_v2 = sub.add_parser(
+        "analyze-writing-samples-v2",
+        help="Analyze 1-3 prior reports locally and write a privacy-safe personal writing profile.",
+    )
+    sample_profile_v2.add_argument("sample_paths", nargs="+")
+    sample_profile_v2.add_argument("--output", required=True)
+
+    humanization_v2 = sub.add_parser(
+        "humanization-audit-v2",
+        help="Audit a report for clustered AI-template prose without using detector scores.",
+    )
+    humanization_v2.add_argument("document_path")
+    humanization_v2.add_argument("--output")
+
+    structure_audit_v2 = sub.add_parser(
+        "document-structure-audit-v2",
+        help="Audit layout flow, numbered figure/table placeholders, cross-references, and unresolved template cues.",
+    )
+    structure_audit_v2.add_argument("document_path")
+    structure_audit_v2.add_argument("--output")
+
+    cohort_v2 = sub.add_parser(
+        "cohort-similarity-v2",
+        help="Check a report against local history or consented de-identified cohort reports.",
+    )
+    cohort_v2.add_argument("generated_path")
+    cohort_v2.add_argument("comparison_paths", nargs="*")
+    cohort_v2.add_argument("--whitelist-json", default="[]")
+
     similarity_v2 = sub.add_parser("similarity-v2", help="Run the strict reference-sample similarity gate.")
     similarity_v2.add_argument("generated_path")
     similarity_v2.add_argument("reference_paths", nargs="+")
@@ -485,6 +514,34 @@ def main() -> int:
             print_json({"ok": False, "error": f"Invalid --overrides-json: {exc}"})
             return 2
         return call_tool(server.tool_v2_create_writing_profile, {"output_path": args.output_path, "subject": args.subject, "preset": args.preset, "overrides": overrides})
+    if args.command == "analyze-writing-samples-v2":
+        if not 1 <= len(args.sample_paths) <= 3:
+            print_json({"ok": False, "error": "sample_paths must contain 1-3 files"})
+            return 2
+        return call_tool(server.tool_v2_analyze_writing_samples, {
+            "sample_paths": args.sample_paths, "output_path": args.output,
+        })
+    if args.command == "humanization-audit-v2":
+        payload = {"document_path": args.document_path}
+        if args.output:
+            payload["output_path"] = args.output
+        return call_tool(server.tool_v2_humanization_audit, payload)
+    if args.command == "document-structure-audit-v2":
+        payload = {"document_path": args.document_path}
+        if args.output:
+            payload["output_path"] = args.output
+        return call_tool(server.tool_v2_document_structure_audit, payload)
+    if args.command == "cohort-similarity-v2":
+        try:
+            whitelist = json.loads(args.whitelist_json)
+        except json.JSONDecodeError as exc:
+            print_json({"ok": False, "error": f"Invalid --whitelist-json: {exc}"})
+            return 2
+        return call_tool(server.tool_v2_cohort_similarity, {
+            "generated_path": args.generated_path,
+            "comparison_paths": args.comparison_paths,
+            "whitelist": whitelist,
+        })
     if args.command == "similarity-v2":
         try:
             whitelist = json.loads(args.whitelist_json)

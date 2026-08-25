@@ -12,11 +12,12 @@
 
 ```bash
 export LAB_CONTROL_PRICE_CENTS=990
+export LAB_CONTROL_PERMANENT_PRICE_CENTS=4990
 export LAB_CONTROL_REFUND_DAYS=7
 export LAB_CONTROL_SUPPORT_CONTACT="售后QQ群：923937311"
 
 export LAB_CONTROL_ALIPAY_QR_PATH="/服务器私有目录/alipay-business-code.png"
-export LAB_CONTROL_ALIPAY_INSTRUCTIONS="使用支付宝扫描经营码并支付 9.9 元"
+export LAB_CONTROL_ALIPAY_INSTRUCTIONS="使用支付宝扫描经营码，并按订单金额付款"
 ```
 
 经营码图片和运营联系方式属于部署配置；图片不写入源码、GitHub Actions 或公开仓库。当前私有副本位于 `mcp/lab-skill-factory/private/payment/alipay-business-code.png`，整个 `private/` 目录已被 Git 忽略。部署时单独上传图片并配置绝对路径。未配置 URL、二维码或说明的支付方式不会显示；因此不配置微信变量时，购买页只显示支付宝。Paddle 适配器同样保持关闭；只有完成卖家/域名审核并实现签名 webhook 验证后才能开放。
@@ -34,6 +35,7 @@ delivered ──异常售后人工确认──→ refunded
 操作顺序：
 
 1. 用户创建订单，浏览器获得 256-bit 随机查询 Token；数据库只保存 Token 的 SHA-256。
+   下单时必须选择 9.9 元体验版或 49.9 元永久版；订单金额和最终签发密钥的 `plan` 必须一致。
 2. 用户通过经营收款渠道付款，只提交交易号/备注和付款时间，不上传截图。
 3. 卖家在支付平台的商户记录中核对金额、时间和交易信息。
 4. 点击“确认到账并自动发货”。系统在同一事务中确认付款、创建唯一密钥并标记交付。

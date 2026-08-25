@@ -23,6 +23,9 @@ LEASE_PUBLIC_KEY_FORMAT = "lab-factory-lease-public-key"
 DEVICE_KEY_FORMAT = "lab-factory-installation-key"
 DEFAULT_LEASE_HOURS = 24
 DEFAULT_REFRESH_HOURS = 6
+PLAN_EXPERIENCE = "experience"
+PLAN_PERMANENT = "permanent"
+VALID_PLANS = {PLAN_EXPERIENCE, PLAN_PERMANENT}
 
 
 def utc_now() -> str:
@@ -137,7 +140,18 @@ def issue_lease(
     product_id: str,
     now: datetime | None = None,
     lease_hours: int = DEFAULT_LEASE_HOURS,
+    plan: str = PLAN_PERMANENT,
+    usage_limit: int | None = None,
+    usage_count: int = 0,
 ) -> dict[str, Any]:
+    if plan not in VALID_PLANS:
+        raise ValueError("unsupported license plan")
+    if plan == PLAN_EXPERIENCE and usage_limit != 3:
+        raise ValueError("experience licenses must have exactly three uses")
+    if plan == PLAN_PERMANENT:
+        usage_limit = None
+    if usage_count < 0 or (usage_limit is not None and usage_count > usage_limit):
+        raise ValueError("invalid usage counters")
     issued = (now or datetime.now(timezone.utc)).astimezone(timezone.utc).replace(microsecond=0)
     key_id, private_key = load_private_record(private_path)
     payload = {
@@ -152,6 +166,10 @@ def issue_lease(
         "refresh_after": (issued + timedelta(hours=DEFAULT_REFRESH_HOURS)).isoformat(),
         "expires_at": (issued + timedelta(hours=lease_hours)).isoformat(),
         "issuer_key_id": key_id,
+        "plan": plan,
+        "usage_limit": usage_limit,
+        "usage_count": usage_count,
+        "features": {"skill_condensation": plan == PLAN_PERMANENT},
     }
     return {"payload": payload, "signature": b64encode(private_key.sign(canonical_json(payload)))}
 
@@ -171,7 +189,8 @@ def verify_lease(
         "format", "version", "lease_id", "license_key_id", "install_id", "product_id", "status",
         "issued_at", "refresh_after", "expires_at", "issuer_key_id",
     }
-    if set(payload) != required or payload.get("format") != LEASE_FORMAT or payload.get("version") != LEASE_VERSION:
+    entitlement_fields = {"plan", "usage_limit", "usage_count", "features"}
+    if not required.issubset(payload) or set(payload) - required - entitlement_fields or payload.get("format") != LEASE_FORMAT or payload.get("version") != LEASE_VERSION:
         raise ValueError("invalid or unsupported lease")
     if public_record.get("format") != LEASE_PUBLIC_KEY_FORMAT or public_record.get("version") != LEASE_VERSION:
         raise ValueError("this build has no valid embedded lease public key")
@@ -189,4 +208,21 @@ def verify_lease(
         raise ValueError("lease issue time is in the future")
     if parse_utc(str(payload["expires_at"])) <= current:
         raise ValueError("online lease expired; reconnect to refresh authorization")
+    # Version-1 leases issued before plans existed are existing permanent licenses.
+    if not entitlement_fields.intersection(payload):
+        payload = dict(payload, plan=PLAN_PERMANENT, usage_limit=None, usage_count=0,
+                       features={"skill_condensation": True})
+    elif not entitlement_fields.issubset(payload):
+        raise ValueError("lease entitlement fields are incomplete")
+    plan = payload.get("plan")
+    limit, count, features = payload.get("usage_limit"), payload.get("usage_count"), payload.get("features")
+    if plan not in VALID_PLANS or not isinstance(count, int) or isinstance(count, bool) or count < 0:
+        raise ValueError("lease entitlement is invalid")
+    if not isinstance(features, dict) or set(features) != {"skill_condensation"} or not isinstance(features["skill_condensation"], bool):
+        raise ValueError("lease feature entitlement is invalid")
+    if plan == PLAN_EXPERIENCE:
+        if limit != 3 or count > limit or features["skill_condensation"]:
+            raise ValueError("experience lease entitlement is invalid")
+    elif limit is not None or not features["skill_condensation"]:
+        raise ValueError("permanent lease entitlement is invalid")
     return payload

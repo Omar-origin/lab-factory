@@ -10,6 +10,7 @@ remain in the skill package and its helper scripts.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import json
 import os
@@ -105,6 +106,34 @@ def require_activation(enforce_minimum_version: bool = True) -> None:
         f"购买说明：{commercial_client.PURCHASE_URL}；支持：{commercial_client.SUPPORT_EMAIL}；"
         "在线密钥用户调用 lab_factory_activate_key；离线许可证用户调用 lab_factory_activate。"
     )
+
+
+def require_feature(feature: str) -> None:
+    status = activation_status()
+    if not status.get("activated"):
+        require_activation()
+    features = status.get("features") or {}
+    if features.get(feature) is True:
+        return
+    if feature == "skill_condensation":
+        raise ToolError(
+            "9.9 元体验版不包含 Skill 凝练或更新；49.9 元永久版可解锁此能力。",
+            code="FEATURE_NOT_INCLUDED",
+            details={"feature": feature, "plan": status.get("plan", "experience")},
+        )
+    raise ToolError(f"当前密钥不包含功能：{feature}", code="FEATURE_NOT_INCLUDED")
+
+
+def consume_report_use(report_id: str) -> dict[str, Any]:
+    try:
+        return commercial_client.consume_usage("report:" + report_id)
+    except commercial_client.OnlineControlError as exc:
+        message = str(exc)
+        if exc.code == "USAGE_LIMIT_REACHED":
+            message = "9.9 元体验版的 3 次报告额度已经用完；升级 49.9 元永久版后可无限使用。"
+        raise ToolError(message, code=exc.code) from exc
+    except (ValueError, OSError) as exc:
+        raise ToolError(f"无法确认体验版使用额度：{exc}", code="USAGE_CHECK_FAILED") from exc
 
 
 def run_skill_script(
@@ -535,6 +564,12 @@ def tool_apply_fill_map(args: dict[str, Any]) -> dict[str, Any]:
     if not validation.get("ok"):
         raise ToolError(f"fill-map 校验失败，不能写入副本：{validation.get('errors') or validation.get('error')}")
 
+    try:
+        fill_map_digest = hashlib.sha256(Path(resolve_user_path(fill_map_path)).read_bytes()).hexdigest()
+    except OSError as exc:
+        raise ToolError(f"无法读取 fill-map 以确认使用额度：{exc}", code="USAGE_CHECK_FAILED") from exc
+    usage = consume_report_use("legacy_" + fill_map_digest)
+
     result = run_skill_script("apply_fill_map.py", command_args, timeout=120, ok_return_codes=(0, 1))
     if not result.get("ok"):
         raise ToolError(f"写入副本失败：{result.get('error')}")
@@ -542,6 +577,7 @@ def tool_apply_fill_map(args: dict[str, Any]) -> dict[str, Any]:
         "请让用户检查草稿副本。若截图/绘图/真实数据未补齐，暂停等待用户补齐；"
         "不要在第一次草稿阶段删除模板原文或提示。"
     )
+    result["license_usage"] = usage
     return result
 
 
@@ -573,14 +609,16 @@ def run_autopilot(function: Any, *args: Any, **kwargs: Any) -> dict[str, Any]:
 
 def tool_v2_prepare_autopilot(args: dict[str, Any]) -> dict[str, Any]:
     require_activation()
+    raw_key = require_string(args, "idempotency_key")
+    try:
+        report_uuid = uuid.UUID(raw_key).hex
+    except ValueError as exc:
+        raise ToolError("idempotency_key 必须是 UUID。", code="IDEMPOTENCY_KEY_INVALID") from exc
+    usage = consume_report_use(report_uuid)
     mode = args.get("mode", "balanced")
     if mode == "strict":
         workspace = require_string(args, "workspace")
-        raw_key = require_string(args, "idempotency_key")
-        try:
-            strict_report_id = "strict_" + uuid.UUID(raw_key).hex[:12]
-        except ValueError as exc:
-            raise ToolError("idempotency_key 必须是 UUID。", code="IDEMPOTENCY_KEY_INVALID") from exc
+        strict_report_id = "strict_" + report_uuid[:12]
         legacy_state_path = Path(resolve_user_path(workspace)) / "lab-factory" / "session-state.json"
         if legacy_state_path.exists():
             existing = v2_session_status(workspace)
@@ -598,10 +636,15 @@ def tool_v2_prepare_autopilot(args: dict[str, Any]) -> dict[str, Any]:
             "next_action": "ask_user", "reason_code": "STRICT_REQUIREMENTS_CONFIRMATION",
             "required_tool": "lab_factory_v2_confirm_requirements",
             "note": "strict 模式映射现有 v2.0 逐阶段确认流程；后续继续使用旧 v2 工具。",
+            "license_usage": usage,
         }
     writing_profile = args.get("writing_profile_path")
     style_card = args.get("style_card_path")
-    return run_autopilot(
+    personal_profile = args.get("personal_writing_profile_path")
+    style_identity = hashlib.sha256(
+        (product_id() + "\n" + commercial_client.install_id()).encode("utf-8")
+    ).hexdigest()
+    result = run_autopilot(
         autopilot.prepare,
         Path(resolve_user_path(require_string(args, "workspace"))),
         require_string(args, "idempotency_key"),
@@ -611,7 +654,58 @@ def tool_v2_prepare_autopilot(args: dict[str, Any]) -> dict[str, Any]:
         Path(resolve_user_path(require_string(args, "template_profile_path"))),
         Path(resolve_user_path(writing_profile)) if isinstance(writing_profile, str) and writing_profile.strip() else None,
         Path(resolve_user_path(style_card)) if isinstance(style_card, str) and style_card.strip() else None,
+        Path(resolve_user_path(personal_profile)) if isinstance(personal_profile, str) and personal_profile.strip() else None,
+        style_identity,
     )
+    result["license_usage"] = usage
+    return result
+
+
+def tool_v2_analyze_writing_samples(args: dict[str, Any]) -> dict[str, Any]:
+    require_activation()
+    paths = args.get("sample_paths")
+    if not isinstance(paths, list) or not 1 <= len(paths) <= 3 or not all(isinstance(item, str) and item.strip() for item in paths):
+        raise ToolError("sample_paths 必须包含 1–3 个 DOCX、Markdown 或文本文件。")
+    output = require_string(args, "output_path")
+    return run_v2([
+        "analyze-writing-samples",
+        *(resolve_user_path(item) for item in paths),
+        "--output", resolve_user_path(output),
+    ], timeout=180)
+
+
+def tool_v2_humanization_audit(args: dict[str, Any]) -> dict[str, Any]:
+    require_activation()
+    command = ["humanization-audit", resolve_user_path(require_string(args, "document_path"))]
+    output = args.get("output_path")
+    if isinstance(output, str) and output.strip():
+        command.extend(["--output", resolve_user_path(output)])
+    return run_v2(command, allow_validation_failure=True)
+
+
+def tool_v2_document_structure_audit(args: dict[str, Any]) -> dict[str, Any]:
+    require_activation()
+    command = ["document-structure-audit", resolve_user_path(require_string(args, "document_path"))]
+    output = args.get("output_path")
+    if isinstance(output, str) and output.strip():
+        command.extend(["--output", resolve_user_path(output)])
+    return run_v2(command, allow_validation_failure=True)
+
+
+def tool_v2_cohort_similarity(args: dict[str, Any]) -> dict[str, Any]:
+    require_activation()
+    comparisons = args.get("comparison_paths", [])
+    if not isinstance(comparisons, list) or not all(isinstance(item, str) and item.strip() for item in comparisons):
+        raise ToolError("comparison_paths 必须是本机历史或脱敏批次报告的字符串数组；首次使用可以为空。")
+    whitelist = args.get("whitelist", [])
+    if not isinstance(whitelist, list) or not all(isinstance(item, str) for item in whitelist):
+        raise ToolError("whitelist 必须是字符串数组。")
+    return run_v2([
+        "cohort-similarity",
+        resolve_user_path(require_string(args, "generated_path")),
+        *(resolve_user_path(item) for item in comparisons),
+        "--whitelist-json", json.dumps(whitelist, ensure_ascii=False),
+    ], allow_validation_failure=True)
 
 
 def tool_v2_answer_questions(args: dict[str, Any]) -> dict[str, Any]:
@@ -768,14 +862,20 @@ def tool_v2_apply_section_plan(args: dict[str, Any]) -> dict[str, Any]:
 
 def tool_v2_create_session(args: dict[str, Any]) -> dict[str, Any]:
     require_activation()
+    report_id = args.get("report_id")
+    if not isinstance(report_id, str) or not report_id.strip():
+        report_id = "report_" + uuid.uuid4().hex
+    else:
+        report_id = report_id.strip()
+    usage = consume_report_use(report_id)
     command = [
         "create-session", resolve_user_path(require_string(args, "workspace")),
         "--subject", require_string(args, "subject"),
     ]
-    report_id = args.get("report_id")
-    if isinstance(report_id, str) and report_id.strip():
-        command.extend(["--report-id", report_id.strip()])
-    return run_v2(command)
+    command.extend(["--report-id", report_id])
+    result = run_v2(command)
+    result["license_usage"] = usage
+    return result
 
 
 def tool_v2_session_status(args: dict[str, Any]) -> dict[str, Any]:
@@ -851,7 +951,11 @@ def tool_v2_mark_content_ready(args: dict[str, Any]) -> dict[str, Any]:
 def tool_v2_apply_draft(args: dict[str, Any]) -> dict[str, Any]:
     require_activation()
     workspace = require_string(args, "workspace")
-    require_v2_state(workspace, {"content_ready"})
+    session_status = require_v2_state(workspace, {"content_ready"})
+    report_id = str((session_status.get("session") or {}).get("report_id") or "").strip()
+    if not report_id:
+        raise ToolError("v2 会话缺少 report_id，无法确认使用额度。", code="USAGE_CHECK_FAILED")
+    usage = consume_report_use(report_id)
     command = [
         "apply", resolve_user_path(require_string(args, "profile_path")),
         resolve_user_path(require_string(args, "docx_path")),
@@ -863,6 +967,7 @@ def tool_v2_apply_draft(args: dict[str, Any]) -> dict[str, Any]:
     result = run_v2(command, timeout=180)
     transition = run_v2(["advance-session", resolve_user_path(workspace), "--event", "record_draft"])
     result["session"] = transition.get("session")
+    result["license_usage"] = usage
     result["mcp_next_step"] = "必须让用户在 WPS 中检查草稿；未提交 draft review 前不得 finalize。"
     return result
 
@@ -904,6 +1009,12 @@ def tool_v2_finalize(args: dict[str, Any]) -> dict[str, Any]:
         similarity = run_v2(command, allow_validation_failure=True)
     if not similarity.get("ok"):
         raise ToolError(f"相似性门禁阻止 finalize：{similarity.get('findings')}")
+    structure_audit = run_v2(
+        ["document-structure-audit", resolve_user_path(require_string(args, "generated_path"))],
+        allow_validation_failure=True,
+    )
+    if structure_audit.get("status") != "pass":
+        raise ToolError(f"结构与图表门禁阻止 finalize：{structure_audit.get('failures')}")
     disclaimer = run_v2(["ensure-disclaimer", resolve_user_path(require_string(args, "generated_path"))])
     if disclaimer.get("disclaimer_count") != 1:
         raise ToolError("AI 辅助生成声明无法安全写入，Finalize 已阻止。")
@@ -914,7 +1025,14 @@ def tool_v2_finalize(args: dict[str, Any]) -> dict[str, Any]:
             "--feedback", require_string(args, "user_confirmation_summary"),
         ]
     )
-    return {"ok": True, "similarity_gate": similarity, "disclaimer": disclaimer, "session": transition.get("session"), "next_actions": ["continue_revision", "review_skill_update", "finish_without_update"]}
+    return {
+        "ok": True,
+        "similarity_gate": similarity,
+        "structure_audit": structure_audit,
+        "disclaimer": disclaimer,
+        "session": transition.get("session"),
+        "next_actions": ["continue_revision", "review_skill_update", "finish_without_update"],
+    }
 
 
 def tool_v2_decide_iteration(args: dict[str, Any]) -> dict[str, Any]:
@@ -972,6 +1090,7 @@ def tool_v2_migrate_v1(args: dict[str, Any]) -> dict[str, Any]:
 
 def tool_v2_propose_skill_update(args: dict[str, Any]) -> dict[str, Any]:
     require_activation()
+    require_feature("skill_condensation")
     workspace = require_string(args, "workspace")
     require_v2_state(workspace, {"finalized"})
     updates = args.get("updates")
@@ -988,6 +1107,7 @@ def tool_v2_propose_skill_update(args: dict[str, Any]) -> dict[str, Any]:
 
 def tool_v2_apply_skill_update(args: dict[str, Any]) -> dict[str, Any]:
     require_activation()
+    require_feature("skill_condensation")
     workspace = require_string(args, "workspace")
     require_v2_state(workspace, {"finalized"})
     proposal_path = Path(resolve_user_path(require_string(args, "proposal_path")))
@@ -1019,6 +1139,7 @@ def validate_scaffolded_skill_dir(skill_path: str) -> dict[str, Any]:
 
 def tool_scaffold_subject_skill(args: dict[str, Any]) -> dict[str, Any]:
     require_activation()
+    require_feature("skill_condensation")
     skill_spec_path = args.get("skill_spec_path")
     output_dir = args.get("output_dir")
     if not isinstance(skill_spec_path, str) or not skill_spec_path.strip():
@@ -1398,8 +1519,24 @@ TOOLS: dict[str, dict[str, Any]] = {
         },
         "handler": tool_v2_apply_section_plan,
     },
+    "lab_factory_v2_analyze_writing_samples": {
+        "description": "首次使用时可选读取 1–3 份用户自己以前完成的任意科目实验报告；仅在本地提取稳定写作特征并生成不含正文、路径和个人信息的画像。没有样本时跳过本工具。",
+        "inputSchema": {
+            "type": "object",
+            "required": ["sample_paths", "output_path"],
+            "properties": {
+                "sample_paths": {
+                    "type": "array", "minItems": 1, "maxItems": 3,
+                    "items": {"type": "string"},
+                },
+                "output_path": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+        "handler": tool_v2_analyze_writing_samples,
+    },
     "lab_factory_v2_prepare_autopilot": {
-        "description": "创建结果优先的 v2.1 报告自动驾驶会话，汇总 8 维偏好、格式来源和首个 preflight 确认点；不生成正文。",
+        "description": "创建结果优先的 v2.1 报告自动驾驶会话。可使用旧报告画像；没有画像时按安装身份分配稳定写作 capsule，不让所有用户落到同一种默认风格。汇总写作身份、报告变化、格式来源和首个 preflight；不生成正文。",
         "inputSchema": {
             "type": "object",
             "required": ["workspace", "idempotency_key", "subject", "mode", "requirements_path", "template_profile_path"],
@@ -1409,10 +1546,51 @@ TOOLS: dict[str, dict[str, Any]] = {
                 "mode": {"type": "string", "enum": ["balanced", "strict", "fast"], "default": "balanced"},
                 "requirements_path": {"type": "string"}, "template_profile_path": {"type": "string"},
                 "writing_profile_path": {"type": "string"}, "style_card_path": {"type": "string"},
+                "personal_writing_profile_path": {"type": "string"},
             },
             "additionalProperties": False,
         },
         "handler": tool_v2_prepare_autopilot,
+    },
+    "lab_factory_v2_humanization_audit": {
+        "description": "对实验报告正文执行领域化去 AI 模板腔审计。成组命中才要求重写，保留课程术语、代码、公式和必要技术表达；不使用 AI 检测器分数作为门禁。",
+        "inputSchema": {
+            "type": "object",
+            "required": ["document_path"],
+            "properties": {
+                "document_path": {"type": "string"},
+                "output_path": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+        "handler": tool_v2_humanization_audit,
+    },
+    "lab_factory_v2_document_structure_audit": {
+        "description": "审计生成稿的结构差异证据、单图单占位、图表编号与正文交叉引用、表格取舍、问题截图占位和残留 XXX 目录提示；未通过时不得 finalize。",
+        "inputSchema": {
+            "type": "object",
+            "required": ["document_path"],
+            "properties": {
+                "document_path": {"type": "string"},
+                "output_path": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+        "handler": tool_v2_document_structure_audit,
+    },
+    "lab_factory_v2_cohort_similarity": {
+        "description": "把生成稿与本机历史或经同意的脱敏批次报告比较，检查连续文本、相似句、字符 5-gram、写作风格指纹和可观测结构流；结构流与构件数量同时高度相似时也会阻止。结果不保存比较正文或路径。首次使用可以传空数组，结果会明确标注无基线且不声称已证明差异。",
+        "inputSchema": {
+            "type": "object",
+            "required": ["generated_path", "comparison_paths"],
+            "properties": {
+                "generated_path": {"type": "string"},
+                "comparison_paths": {"type": "array", "items": {"type": "string"}, "default": []},
+                "whitelist": {"type": "array", "items": {"type": "string"}},
+            },
+            "additionalProperties": False,
+        },
+        "handler": tool_v2_cohort_similarity,
     },
     "lab_factory_v2_answer_questions": {
         "description": "一次回答当前 interaction plan 的阻断问题；稳定偏好会进入草稿画像，完成后生成 preflight 摘要。",
@@ -1703,7 +1881,11 @@ def handle_request(message: dict[str, Any]) -> dict[str, Any] | None:
                     "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
                     "instructions": (
                         "If given an online activation key, use lab_factory_activate_key. Offline license files remain supported through lab_factory_activate. "
-                        "New reports should start with lab_factory_v2_prepare_autopilot and obey its next_action. "
+                        "Before the first report, offer the optional local calibration: the user may provide one to three prior lab reports from any subject; "
+                        "if supplied, call lab_factory_v2_analyze_writing_samples and pass its profile to lab_factory_v2_prepare_autopilot; if skipped, continue without blocking. "
+                        "New reports should then use lab_factory_v2_prepare_autopilot and obey its next_action. "
+                        "When content is requested, read every required object ID, build a fact ledger, apply the writer genome, run identity-conditioned humanization, "
+                        "and provide the humanization and cross-report diversity gate evidence before final review. "
                         "Balanced mode normally asks only for stable preferences, preflight confirmation, exceptions that materially affect quality or safety, and final DOCX review. "
                         "Legacy v2.0 sessions continue with the strict lab_factory_v2_create_session workflow."
                     ),

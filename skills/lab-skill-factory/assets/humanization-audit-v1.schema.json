@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Lab Factory Humanization Audit",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "status", "metrics", "pattern_findings", "domain_exemptions", "required_attestations", "detector_policy"],
+  "properties": {
+    "version": {"const": "1.0"},
+    "status": {"enum": ["pass", "retryable_failure"]},
+    "metrics": {"type": "object", "additionalProperties": true},
+    "pattern_findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "count", "severity"],
+        "properties": {
+          "id": {"type": "string"},
+          "count": {"type": "integer", "minimum": 1},
+          "severity": {"enum": ["notice", "rewrite"]}
+        },
+        "additionalProperties": true
+      }
+    },
+    "domain_exemptions": {"type": "array", "items": {"type": "string"}},
+    "required_attestations": {"type": "array", "items": {"type": "string"}},
+    "detector_policy": {"const": "ai_detector_scores_are_not_quality_gates"}
+  }
+}

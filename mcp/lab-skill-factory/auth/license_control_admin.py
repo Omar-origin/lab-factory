@@ -42,9 +42,10 @@ def create_control_env(
         "LAB_CONTROL_LEASE_PRIVATE_KEY": str(lease_private_key.expanduser().resolve()),
         "LAB_CONTROL_DB": str(db_path.expanduser().resolve()),
         "LAB_CONTROL_ALIPAY_QR_PATH": str(alipay_qr_path.expanduser().resolve()),
-        "LAB_CONTROL_ALIPAY_INSTRUCTIONS": "使用支付宝扫描经营码并支付 9.9 元",
+        "LAB_CONTROL_ALIPAY_INSTRUCTIONS": "使用支付宝扫描经营码，并按订单金额付款",
         "LAB_CONTROL_SUPPORT_CONTACT": support_contact,
         "LAB_CONTROL_PRICE_CENTS": "990",
+        "LAB_CONTROL_PERMANENT_PRICE_CENTS": "4990",
         "LAB_CONTROL_REFUND_DAYS": "7",
         "LAB_CONTROL_HOST": "127.0.0.1",
         "LAB_CONTROL_PORT": "8765",
@@ -123,6 +124,7 @@ def main() -> int:
     create.add_argument("--label", default="")
     create.add_argument("--customer-ref", default="")
     create.add_argument("--refund-days", type=int, choices=[3, 7], default=7)
+    create.add_argument("--plan", choices=["experience", "permanent"], default="permanent")
     list_parser = key_sub.add_parser("list", help="List keys and whether each one has been used")
     list_parser.add_argument("--status", choices=["unused", "active", "refund_requested", "refunded", "banned"])
     list_parser.add_argument("--limit", type=int, default=100)
@@ -201,6 +203,7 @@ def main() -> int:
                 "label": args.label,
                 "customer_ref": args.customer_ref,
                 "refund_days": args.refund_days,
+                "plan": args.plan,
             })
         elif args.key_action == "list":
             query = {"limit": str(args.limit)}

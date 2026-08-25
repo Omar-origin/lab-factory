@@ -66,6 +66,10 @@
           <form id="createForm">
             <label>备注<input name="label" maxlength="120" placeholder="例如：首批体验用户"></label>
             <label>订单引用<input name="customer_ref" maxlength="120" placeholder="不填写敏感身份信息"></label>
+            <fieldset><legend>授权版本</legend><div class="radios">
+              <label class="radio"><input type="radio" name="plan" value="permanent" checked><span>49.9 永久版 · 无限使用 + Skill 凝练</span></label>
+              <label class="radio"><input type="radio" name="plan" value="experience"><span>9.9 体验版 · 3 次 + 不可凝练 Skill</span></label>
+            </div></fieldset>
             <fieldset>
               <legend>异常售后参考期</legend>
               <label class="radio"><input type="radio" name="refund_days" value="7" checked><span>7 天</span></label>

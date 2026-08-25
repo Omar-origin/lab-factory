@@ -26,7 +26,10 @@ PURCHASE_UI_DIR = Path(__file__).resolve().parent / "purchase_ui"
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from lease_crypto import issue_lease, load_private_record, parse_utc, validate_device_public_key, verify_device_message
+from lease_crypto import (
+    PLAN_EXPERIENCE, PLAN_PERMANENT, issue_lease, load_private_record, parse_utc,
+    validate_device_public_key, verify_device_message,
+)
 from payment_providers import ManualPaymentProvider, PaddlePaymentProvider, PaymentProvider
 
 
@@ -36,6 +39,7 @@ ORDER_STATES = {
     "key_issued", "delivered", "refund_requested", "refunded",
 }
 PUBLIC_ACTIVE_STATES = {"active"}
+LICENSE_PLANS = {PLAN_EXPERIENCE, PLAN_PERMANENT}
 MAX_BODY_BYTES = 32 * 1024
 
 
@@ -96,6 +100,7 @@ class ControlStore:
         product_id: str = "lab-factory-1",
         lease_hours: int = 24,
         price_cents: int = 990,
+        permanent_price_cents: int = 4990,
         refund_days: int = 7,
         payment_providers: dict[str, PaymentProvider] | None = None,
         support_contact: str = "",
@@ -115,6 +120,9 @@ class ControlStore:
         if refund_days not in {3, 7}:
             raise ValueError("refund_days must be 3 or 7")
         self.price_cents = price_cents
+        if permanent_price_cents < 1:
+            raise ValueError("permanent_price_cents must be positive")
+        self.permanent_price_cents = permanent_price_cents
         self.refund_days = refund_days
         self.payment_providers = payment_providers or {}
         self.support_contact = support_contact[:200]
@@ -163,6 +171,8 @@ class ControlStore:
                   last_seen_at text,
                   revoked_at text,
                   revoke_reason text not null default ''
+                  ,plan text not null default 'permanent' check(plan in ('experience','permanent'))
+                  ,usage_limit integer check(usage_limit is null or usage_limit = 3)
                 );
                 create unique index if not exists unique_activation_token
                   on license_keys(activation_token_hash) where activation_token_hash is not null;
@@ -183,6 +193,14 @@ class ControlStore:
                 );
                 create index if not exists license_keys_status_created on license_keys(status, created_at desc);
                 create index if not exists audit_key_created on audit_events(license_key_id, created_at desc);
+                create table if not exists usage_events (
+                  id text primary key,
+                  license_key_id text not null references license_keys(id),
+                  usage_id text not null,
+                  used_at text not null,
+                  unique(license_key_id, usage_id)
+                );
+                create index if not exists usage_key_used on usage_events(license_key_id, used_at desc);
                 create table if not exists orders (
                   id text primary key,
                   status_token_hash text not null unique,
@@ -203,6 +221,7 @@ class ControlStore:
                   refund_requested_at text,
                   refunded_at text,
                   admin_reason text not null default ''
+                  ,plan text not null default 'experience' check(plan in ('experience','permanent'))
                 );
                 create table if not exists order_audit_events (
                   id text primary key,
@@ -220,6 +239,13 @@ class ControlStore:
             order_columns = {str(row[1]) for row in conn.execute("pragma table_info(orders)")}
             if "delivery_key_version" not in order_columns:
                 conn.execute("alter table orders add column delivery_key_version text not null default ''")
+            if "plan" not in order_columns:
+                conn.execute("alter table orders add column plan text not null default 'experience'")
+            key_columns = {str(row[1]) for row in conn.execute("pragma table_info(license_keys)")}
+            if "plan" not in key_columns:
+                conn.execute("alter table license_keys add column plan text not null default 'permanent'")
+            if "usage_limit" not in key_columns:
+                conn.execute("alter table license_keys add column usage_limit integer")
 
     def _key_hash(self, activation_key: str) -> str:
         normalized = normalize_activation_key(activation_key)
@@ -294,13 +320,16 @@ class ControlStore:
         label: str,
         customer_ref: str,
         refund_days: int,
+        plan: str = PLAN_PERMANENT,
     ) -> tuple[str, str]:
+        if plan not in LICENSE_PLANS:
+            raise ControlError(400, "INVALID_PLAN", "plan must be experience or permanent")
         activation_key = generate_activation_key()
         key_id, created_at = "lfkey_" + uuid.uuid4().hex, utc_now()
         conn.execute(
             """insert into license_keys
-            (id,key_hash,key_suffix,status,label,customer_ref,refund_days,product_id,created_at)
-            values(?,?,?,'unused',?,?,?,?,?)""",
+            (id,key_hash,key_suffix,status,label,customer_ref,refund_days,product_id,created_at,plan,usage_limit)
+            values(?,?,?,'unused',?,?,?,?,?,?,?)""",
             (
                 key_id,
                 self._key_hash(activation_key),
@@ -310,9 +339,11 @@ class ControlStore:
                 refund_days,
                 self.product_id,
                 created_at,
+                plan,
+                3 if plan == PLAN_EXPERIENCE else None,
             ),
         )
-        self._audit(conn, key_id, "key_created", "admin", metadata={"refund_days": refund_days})
+        self._audit(conn, key_id, "key_created", "admin", metadata={"refund_days": refund_days, "plan": plan})
         return activation_key, key_id
 
     @staticmethod
@@ -323,13 +354,14 @@ class ControlStore:
         value["bound"] = bool(row["install_id"])
         return value
 
-    def create_key(self, *, label: str = "", customer_ref: str = "", refund_days: int = 7) -> dict[str, Any]:
+    def create_key(self, *, label: str = "", customer_ref: str = "", refund_days: int = 7,
+                   plan: str = PLAN_PERMANENT) -> dict[str, Any]:
         if refund_days not in {3, 7}:
             raise ControlError(400, "INVALID_REFUND_DAYS", "refund_days must be 3 or 7")
         with self.connection() as conn:
             with conn:
                 activation_key, key_id = self._insert_key(
-                    conn, label=label, customer_ref=customer_ref, refund_days=refund_days
+                    conn, label=label, customer_ref=customer_ref, refund_days=refund_days, plan=plan
                 )
         return {
             "ok": True,
@@ -426,6 +458,10 @@ class ControlStore:
             raise
         finally:
             conn.close()
+        with self.connection() as usage_conn:
+            usage_count = int(usage_conn.execute(
+                "select count(*) from usage_events where license_key_id=?", (row["id"],)
+            ).fetchone()[0])
         lease = issue_lease(
             self.lease_private_key,
             license_key_id=str(row["id"]),
@@ -433,6 +469,7 @@ class ControlStore:
             product_id=self.product_id,
             now=now,
             lease_hours=self.lease_hours,
+            plan=str(row["plan"]), usage_limit=row["usage_limit"], usage_count=usage_count,
         )
         return {
             "ok": True,
@@ -443,13 +480,14 @@ class ControlStore:
             "refund_days": row["refund_days"],
         }
 
-    def _authenticated_request(self, payload: dict[str, Any], expected_action: str) -> tuple[sqlite3.Row, dict[str, Any]]:
+    def _authenticated_request(self, payload: dict[str, Any], expected_action: str,
+                               extra_fields: set[str] | None = None) -> tuple[sqlite3.Row, dict[str, Any]]:
         token = bounded_text(payload.get("activation_token"), "activation_token", 128, required=True)
         message = payload.get("proof")
         signature = payload.get("signature")
         if not isinstance(message, dict) or not isinstance(signature, str):
             raise ControlError(400, "MISSING_PROOF", "signed installation proof is required")
-        required = {"action", "activation_token", "install_id", "timestamp", "nonce"}
+        required = {"action", "activation_token", "install_id", "timestamp", "nonce"} | (extra_fields or set())
         if set(message) != required or message.get("action") != expected_action or message.get("activation_token") != token:
             raise ControlError(400, "INVALID_PROOF", "installation proof does not match request")
         install_id = bounded_text(message.get("install_id"), "install_id", 96, required=True)
@@ -493,6 +531,10 @@ class ControlStore:
                 self._consume_nonce(conn, row, proof["nonce"], proof["now"])
                 conn.execute("update license_keys set last_seen_at=? where id=?", (proof["now"].isoformat(), row["id"]))
                 self._audit(conn, row["id"], "lease_refreshed", "client")
+        with self.connection() as usage_conn:
+            usage_count = int(usage_conn.execute(
+                "select count(*) from usage_events where license_key_id=?", (row["id"],)
+            ).fetchone()[0])
         lease = issue_lease(
             self.lease_private_key,
             license_key_id=str(row["id"]),
@@ -500,8 +542,51 @@ class ControlStore:
             product_id=self.product_id,
             now=proof["now"],
             lease_hours=self.lease_hours,
+            plan=str(row["plan"]), usage_limit=row["usage_limit"], usage_count=usage_count,
         )
         return {"ok": True, "status": "active", "lease": lease}
+
+    def consume_usage(self, payload: dict[str, Any]) -> dict[str, Any]:
+        row, proof = self._authenticated_request(payload, "consume_usage", {"usage_id"})
+        if row["status"] not in PUBLIC_ACTIVE_STATES:
+            raise ControlError(403, "KEY_BLOCKED", f"license key is {row['status']}")
+        usage_id = bounded_text(proof["message"].get("usage_id"), "usage_id", 128, required=True)
+        charged = False
+        conn = self.connect()
+        try:
+            conn.execute("begin immediate")
+            existing = conn.execute(
+                "select id from usage_events where license_key_id=? and usage_id=?", (row["id"], usage_id)
+            ).fetchone()
+            count = int(conn.execute(
+                "select count(*) from usage_events where license_key_id=?", (row["id"],)
+            ).fetchone()[0])
+            if not existing:
+                limit = row["usage_limit"]
+                if limit is not None and count >= int(limit):
+                    raise ControlError(403, "USAGE_LIMIT_REACHED", "experience license has used all three reports")
+                conn.execute(
+                    "insert into usage_events(id,license_key_id,usage_id,used_at) values(?,?,?,?)",
+                    ("lfusage_" + uuid.uuid4().hex, row["id"], usage_id, proof["now"].isoformat()),
+                )
+                count += 1
+                charged = True
+                self._audit(conn, row["id"], "usage_consumed", "client", metadata={"usage_id": usage_id, "usage_count": count})
+            self._consume_nonce(conn, row, proof["nonce"], proof["now"])
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+        lease = issue_lease(
+            self.lease_private_key, license_key_id=str(row["id"]), install_id=str(row["install_id"]),
+            product_id=self.product_id, now=proof["now"], lease_hours=self.lease_hours,
+            plan=str(row["plan"]), usage_limit=row["usage_limit"], usage_count=count,
+        )
+        limit = row["usage_limit"]
+        return {"ok": True, "status": "active", "charged": charged, "usage_count": count,
+                "remaining_uses": None if limit is None else max(0, int(limit) - count), "lease": lease}
 
     def request_refund(self, payload: dict[str, Any]) -> dict[str, Any]:
         self._authenticated_request(payload, "refund_request")
@@ -576,8 +661,14 @@ class ControlStore:
                 "refund_days": self.refund_days,
                 "self_service_refunds": False,
                 "refund_policy": "数字化商品密钥交付后原则上不支持无理由退款；重复付款、无法激活且无法修复、重大功能缺陷或法律另有规定的情形，请联系售后人工处理。",
-                "entitlement": "当前 beta 永久使用，30 天内可更新，升级正式创始版抵扣 9.9 元",
+                "entitlement": "体验版可生成 3 份报告，不包含 Skill 凝练",
             },
+            "plans": [
+                {"id": PLAN_EXPERIENCE, "name": "体验版", "amount_cents": self.price_cents,
+                 "usage_limit": 3, "skill_condensation": False},
+                {"id": PLAN_PERMANENT, "name": "永久版", "amount_cents": self.permanent_price_cents,
+                 "usage_limit": None, "skill_condensation": True},
+            ],
             "payment_providers": [provider.public_config() for provider in self.payment_providers.values()],
             "support_contact": self.support_contact,
             "delivery_commitment": "人工核款确认后，订单页自动显示激活密钥",
@@ -618,10 +709,13 @@ class ControlStore:
             value["activation_key"] = self._order_activation_key(str(row["id"]))
         return value
 
-    def create_order(self, *, contact: str, payment_provider: str) -> dict[str, Any]:
+    def create_order(self, *, contact: str, payment_provider: str, plan: str = PLAN_EXPERIENCE) -> dict[str, Any]:
         contact = bounded_text(contact, "contact", 160, required=True)
         payment_provider = bounded_text(payment_provider, "payment_provider", 40, required=True)
         provider = self.payment_providers.get(payment_provider)
+        plan = bounded_text(plan, "plan", 32, required=True)
+        if plan not in LICENSE_PLANS:
+            raise ControlError(400, "INVALID_PLAN", "plan must be experience or permanent")
         if not provider or not provider.public_config().get("available"):
             raise ControlError(400, "PAYMENT_PROVIDER_UNAVAILABLE", "selected payment provider is unavailable")
         order_id = "lforder_" + uuid.uuid4().hex
@@ -631,14 +725,15 @@ class ControlStore:
             with conn:
                 conn.execute(
                     """insert into orders
-                    (id,status_token_hash,status,product_id,amount_cents,currency,payment_provider,contact,refund_days,created_at,updated_at)
-                    values(?,?,'payment_pending',?,?,?,?,?,?,?,?)""",
+                    (id,status_token_hash,status,product_id,amount_cents,currency,payment_provider,contact,refund_days,created_at,updated_at,plan)
+                    values(?,?,'payment_pending',?,?,?,?,?,?,?,?,?)""",
                     (
-                        order_id, token_hash(status_token), self.product_id, self.price_cents, "CNY",
-                        payment_provider, contact, self.refund_days, now, now,
+                        order_id, token_hash(status_token), self.product_id,
+                        self.price_cents if plan == PLAN_EXPERIENCE else self.permanent_price_cents, "CNY",
+                        payment_provider, contact, self.refund_days, now, now, plan,
                     ),
                 )
-                self._order_audit(conn, order_id, "order_created", "customer", metadata={"provider": payment_provider})
+                self._order_audit(conn, order_id, "order_created", "customer", metadata={"provider": payment_provider, "plan": plan})
         return {
             "ok": True,
             "status_token": status_token,
@@ -754,11 +849,12 @@ class ControlStore:
                     key_id = self._order_license_key_id(order_id)
                     conn.execute(
                         """insert into license_keys
-                        (id,key_hash,key_suffix,status,label,customer_ref,refund_days,product_id,created_at,sent_at)
-                        values(?,?,?,'unused','购买页自动发货',?,?,?,?,?)""",
+                        (id,key_hash,key_suffix,status,label,customer_ref,refund_days,product_id,created_at,sent_at,plan,usage_limit)
+                        values(?,?,?,'unused','购买页自动发货',?,?,?,?,?,?,?)""",
                         (
                             key_id, self._key_hash(plaintext_key), plaintext_key[-4:], order_id,
                             int(row["refund_days"]), self.product_id, now, now,
+                            str(row["plan"]), 3 if row["plan"] == PLAN_EXPERIENCE else None,
                         ),
                     )
                     conn.execute(
@@ -766,7 +862,7 @@ class ControlStore:
                         license_key_id=?,delivery_key_version='derived-v1' where id=? and status='payment_submitted'""",
                         (now, now, now, key_id, order_id),
                     )
-                    self._audit(conn, key_id, "key_created", "admin", "semi-automatic order delivery", {"refund_days": row["refund_days"]})
+                    self._audit(conn, key_id, "key_created", "admin", "semi-automatic order delivery", {"refund_days": row["refund_days"], "plan": row["plan"]})
                     self._audit(conn, key_id, "key_sent", "system", "displayed on authenticated order page")
                     self._order_audit(conn, order_id, "payment_confirmed", "admin", reason)
                     self._order_audit(conn, order_id, "key_issued", "system", "semi-automatic delivery", {"license_key_id": key_id})
@@ -797,7 +893,7 @@ class ControlStore:
                     raise ControlError(409, "INVALID_STATE", f"key cannot be issued from {current}")
                 else:
                     plaintext_key, key_id = self._insert_key(
-                        conn, label="购买页订单", customer_ref=order_id, refund_days=int(row["refund_days"])
+                        conn, label="购买页订单", customer_ref=order_id, refund_days=int(row["refund_days"]), plan=str(row["plan"])
                     )
                     conn.execute(
                         "update orders set status='key_issued',license_key_id=?,updated_at=? where id=?",
@@ -1024,6 +1120,7 @@ class Handler(BaseHTTPRequestHandler):
                 result = self.store.create_order(
                     contact=bounded_text(payload.get("contact"), "contact", 160, required=True),
                     payment_provider=bounded_text(payload.get("payment_provider"), "payment_provider", 40, required=True),
+                    plan=bounded_text(payload.get("plan", PLAN_EXPERIENCE), "plan", 32, required=True),
                 )
                 self.send_json(201, result)
                 return
@@ -1051,6 +1148,9 @@ class Handler(BaseHTTPRequestHandler):
             if parsed.path == "/api/lease/refresh":
                 self.send_json(200, self.store.refresh(payload))
                 return
+            if parsed.path == "/api/usage/consume":
+                self.send_json(200, self.store.consume_usage(payload))
+                return
             if parsed.path == "/api/refunds/request":
                 self.send_json(200, self.store.request_refund(payload))
                 return
@@ -1060,6 +1160,7 @@ class Handler(BaseHTTPRequestHandler):
                     label=bounded_text(payload.get("label"), "label", 120),
                     customer_ref=bounded_text(payload.get("customer_ref"), "customer_ref", 120),
                     refund_days=int(payload.get("refund_days", 7)),
+                    plan=bounded_text(payload.get("plan", PLAN_PERMANENT), "plan", 32, required=True),
                 )
                 self.send_json(201, result)
                 return
@@ -1112,6 +1213,7 @@ def main() -> int:
     parser.add_argument("--token-secret", default=os.environ.get("LAB_CONTROL_TOKEN_SECRET", ""))
     parser.add_argument("--product-id", default=os.environ.get("LAB_FACTORY_PRODUCT_ID", "lab-factory-1"))
     parser.add_argument("--price-cents", type=int, default=int(os.environ.get("LAB_CONTROL_PRICE_CENTS", "990")))
+    parser.add_argument("--permanent-price-cents", type=int, default=int(os.environ.get("LAB_CONTROL_PERMANENT_PRICE_CENTS", "4990")))
     parser.add_argument("--refund-days", type=int, choices=[3, 7], default=int(os.environ.get("LAB_CONTROL_REFUND_DAYS", "7")))
     parser.add_argument("--support-contact", default=os.environ.get("LAB_CONTROL_SUPPORT_CONTACT", "售后QQ群：923937311"))
     args = parser.parse_args()
@@ -1148,6 +1250,7 @@ def main() -> int:
         lease_private_key=Path(args.lease_private_key).expanduser().resolve(),
         product_id=args.product_id,
         price_cents=args.price_cents,
+        permanent_price_cents=args.permanent_price_cents,
         refund_days=args.refund_days,
         payment_providers=payment_providers,
         support_contact=args.support_contact,

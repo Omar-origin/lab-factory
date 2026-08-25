@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Lab Factory Writer Genome v3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "capsule_id",
+    "provenance",
+    "student_capability",
+    "stable_axes",
+    "course_overlay",
+    "invariants",
+    "prohibited_strategies",
+    "privacy"
+  ],
+  "properties": {
+    "version": {"const": "3.0"},
+    "capsule_id": {"type": "string", "pattern": "^wc_[0-9a-f]{16}$"},
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["base", "confidence", "user_adjustable"],
+      "properties": {
+        "base": {"enum": ["system_assigned", "prior_report_profile", "accepted_user_profile"]},
+        "confidence": {"enum": ["low", "medium", "high"]},
+        "user_adjustable": {"const": true}
+      }
+    },
+    "student_capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["level", "professional_boundary", "evidence_boundary"],
+      "properties": {
+        "level": {"enum": ["basic", "natural_undergrad", "mature"]},
+        "professional_boundary": {"type": "string", "minLength": 1},
+        "evidence_boundary": {"type": "string", "minLength": 1}
+      }
+    },
+    "stable_axes": {
+      "type": "object",
+      "required": [
+        "reasoning_route",
+        "explanation_shape",
+        "sentence_rhythm",
+        "paragraph_movement",
+        "terminology_handling",
+        "evidence_habit",
+        "person_voice",
+        "reflection_signature",
+        "uncertainty_style",
+        "connector_density",
+        "list_usage",
+        "revision_focus"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "reasoning_route": {"type": "string"},
+        "explanation_shape": {"type": "string"},
+        "sentence_rhythm": {"type": "string"},
+        "paragraph_movement": {"type": "string"},
+        "terminology_handling": {"type": "string"},
+        "evidence_habit": {"type": "string"},
+        "person_voice": {"type": "string"},
+        "reflection_signature": {"type": "string"},
+        "uncertainty_style": {"type": "string"},
+        "connector_density": {"type": "string"},
+        "list_usage": {"type": "string"},
+        "revision_focus": {"type": "string"}
+      }
+    },
+    "course_overlay": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subject_key", "term_density_adjustment", "analysis_depth_adjustment"],
+      "properties": {
+        "subject_key": {"type": "string", "pattern": "^[0-9a-f]{12}$"},
+        "term_density_adjustment": {"enum": ["preserve", "slightly_lower", "slightly_higher"]},
+        "analysis_depth_adjustment": {"enum": ["preserve", "example_led", "constraint_led"]}
+      }
+    },
+    "invariants": {"type": "array", "minItems": 5, "items": {"type": "string"}, "uniqueItems": true},
+    "prohibited_strategies": {"type": "array", "minItems": 5, "items": {"type": "string"}, "uniqueItems": true},
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stores_identity_key", "stores_report_body", "stores_sample_body"],
+      "properties": {
+        "stores_identity_key": {"const": false},
+        "stores_report_body": {"const": false},
+        "stores_sample_body": {"const": false}
+      }
+    }
+  }
+}

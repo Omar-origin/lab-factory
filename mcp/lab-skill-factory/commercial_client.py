@@ -16,7 +16,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from lease_crypto import create_device_key, parse_utc, sign_device_message, verify_lease
+from lease_crypto import (
+    PLAN_EXPERIENCE, PLAN_PERMANENT, create_device_key, parse_utc,
+    sign_device_message, verify_lease,
+)
 from offline_license import (
     FORMAT_VERSION, PRODUCT_ID, REQUEST_FORMAT, TERMS_VERSION, read_object, utc_now,
     verify_license, write_json,
@@ -41,6 +44,18 @@ TELEMETRY_ALLOWLIST = {
 }
 FEEDBACK_ALLOWLIST = {"review_id", "rating", "issue_categories", "edit_time_bucket", "channel_id"}
 _ONLINE_REFRESH_ATTEMPTED = False
+
+
+def _entitlement_fields(payload: dict[str, Any]) -> dict[str, Any]:
+    limit = payload.get("usage_limit")
+    count = int(payload.get("usage_count", 0))
+    return {
+        "plan": payload.get("plan", PLAN_PERMANENT),
+        "usage_limit": limit,
+        "usage_count": count,
+        "remaining_uses": None if limit is None else max(0, int(limit) - count),
+        "features": payload.get("features", {"skill_condensation": True}),
+    }
 
 
 class OnlineControlError(Exception):
@@ -274,10 +289,11 @@ def activate_key(activation_key: str, adult_confirmed: bool, terms_version: str,
         "lease_expires_at": payload["expires_at"],
         "refresh_after": payload["refresh_after"],
         "refund_deadline": result.get("refund_deadline"),
+        **_entitlement_fields(payload),
     }
 
 
-def _online_proof(credential: dict[str, Any], action: str) -> dict[str, Any]:
+def _online_proof(credential: dict[str, Any], action: str, **signed_fields: Any) -> dict[str, Any]:
     token = credential.get("activation_token")
     if not isinstance(token, str) or not token:
         raise OnlineControlError("local online credential has no activation token", code="TOKEN_MISSING")
@@ -287,6 +303,7 @@ def _online_proof(credential: dict[str, Any], action: str) -> dict[str, Any]:
         "install_id": install_id(),
         "timestamp": utc_now(),
         "nonce": secrets.token_urlsafe(24),
+        **signed_fields,
     }
     return {
         "activation_token": token,
@@ -318,6 +335,50 @@ def refresh_online_lease(credential: dict[str, Any]) -> tuple[dict[str, Any], di
         "lease_expires_at": payload["expires_at"],
     })
     return updated, payload
+
+
+def consume_usage(usage_id: str) -> dict[str, Any]:
+    """Atomically reserve one report use for an experience key.
+
+    `usage_id` is stable for a report, so retries return the existing reservation
+    without charging twice. Permanent and development entitlements are no-ops.
+    """
+    if not isinstance(usage_id, str) or not usage_id.strip() or len(usage_id) > 128:
+        raise ValueError("usage_id must be a non-empty string of at most 128 characters")
+    if os.environ.get("LAB_FACTORY_DEV_ALLOW") == "1" and not bool(getattr(sys, "frozen", False)):
+        return {"ok": True, "plan": PLAN_PERMANENT, "charged": False, "remaining_uses": None}
+    credential = CredentialStore().get()
+    if not isinstance(credential, dict) or credential.get("credential_type") != "online_lease":
+        # Offline licenses are permanent licenses issued under the original contract.
+        return {"ok": True, "plan": PLAN_PERMANENT, "charged": False, "remaining_uses": None}
+    lease = credential.get("lease")
+    if not isinstance(lease, dict):
+        raise OnlineControlError("local online credential has no signed lease", code="LEASE_MISSING")
+    payload = verify_lease(
+        lease, embedded_lease_public_key(), install_id=install_id(), product_id=PRODUCT_ID,
+    )
+    if payload.get("plan") != PLAN_EXPERIENCE:
+        return {"ok": True, "plan": PLAN_PERMANENT, "charged": False, "remaining_uses": None}
+    url = control_url(credential)
+    if not url:
+        raise OnlineControlError("experience usage requires the authorization service", code="CONTROL_URL_MISSING")
+    result = post_json(
+        f"{url}/api/usage/consume",
+        _online_proof(credential, "consume_usage", usage_id=usage_id.strip()),
+    )
+    renewed = result.get("lease")
+    if not isinstance(renewed, dict):
+        raise OnlineControlError("usage response did not include a signed lease", code="LEASE_MISSING")
+    renewed_payload = verify_lease(
+        renewed, embedded_lease_public_key(), install_id=install_id(), product_id=PRODUCT_ID,
+    )
+    updated = dict(credential, lease=renewed, control_url=url)
+    CredentialStore().save_online(updated, {
+        "status": "ACTIVE", "license_mode": "online_lease",
+        "license_key_id": renewed_payload["license_key_id"], "last_usage_at": utc_now(),
+        **_entitlement_fields(renewed_payload),
+    })
+    return {**result, **_entitlement_fields(renewed_payload)}
 
 
 def request_refund() -> dict[str, Any]:
@@ -377,6 +438,7 @@ def _online_activation_status(credential: dict[str, Any], refresh: bool) -> dict
                 "lease_expires_at": cached_payload["expires_at"],
                 "refresh_after": cached_payload["refresh_after"],
                 "warning": "授权服务暂时不可达；当前安装只能使用到本地租约到期。",
+                **_entitlement_fields(cached_payload),
             }
         except Exception as exc:
             return {
@@ -393,12 +455,15 @@ def _online_activation_status(credential: dict[str, Any], refresh: bool) -> dict
         "license_key_id": cached_payload["license_key_id"],
         "lease_expires_at": cached_payload["expires_at"],
         "refresh_after": cached_payload["refresh_after"],
+        **_entitlement_fields(cached_payload),
     }
 
 
 def activation_status(refresh: bool = False) -> dict[str, Any]:
     if os.environ.get("LAB_FACTORY_DEV_ALLOW") == "1" and not bool(getattr(sys, "frozen", False)):
-        return {"activated": True, "mode": "source_development_override"}
+        return {"activated": True, "mode": "source_development_override", "plan": PLAN_PERMANENT,
+                "usage_limit": None, "usage_count": 0, "remaining_uses": None,
+                "features": {"skill_condensation": True}}
     envelope = CredentialStore().get()
     if not envelope:
         if control_url():
@@ -418,7 +483,9 @@ def activation_status(refresh: bool = False) -> dict[str, Any]:
     if payload["install_id"] != install_id():
         return {"activated": False, "mode": "offline_permanent_license", "message": "授权不属于当前安装。"}
     return {"activated": True, "mode": "offline_permanent_license", "license_id": payload["license_id"],
-            "channel_id": payload["channel_id"], "entitlement": payload["entitlement"], "issued_at": payload["issued_at"]}
+            "channel_id": payload["channel_id"], "entitlement": payload["entitlement"], "issued_at": payload["issued_at"],
+            "plan": PLAN_PERMANENT, "usage_limit": None, "usage_count": 0, "remaining_uses": None,
+            "features": {"skill_condensation": True}}
 
 
 def deactivate() -> dict[str, Any]:

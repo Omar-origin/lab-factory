@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Lab Factory Host Generation Contract v3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "object_refs",
+    "pipeline",
+    "student_identity",
+    "humanization_policy",
+    "layout_policy",
+    "caption_reference_policy",
+    "problem_evidence_policy",
+    "candidate_policy",
+    "required_quality_gates",
+    "privacy"
+  ],
+  "properties": {
+    "version": {"const": "3.0"},
+    "object_refs": {
+      "type": "object",
+      "required": ["preferences", "writer_genome", "variation_contract"],
+      "additionalProperties": {"type": ["string", "null"]}
+    },
+    "pipeline": {
+      "type": "array",
+      "const": ["fact_ledger", "discourse_plan", "draft", "identity_humanization", "deterministic_gates"]
+    },
+    "student_identity": {
+      "type": "object",
+      "required": ["professional_not_expert", "first_person_requires_evidence", "uncertainty_requires_reason", "no_deliberate_errors"],
+      "additionalProperties": false,
+      "properties": {
+        "professional_not_expert": {"const": true},
+        "first_person_requires_evidence": {"const": true},
+        "uncertainty_requires_reason": {"const": true},
+        "no_deliberate_errors": {"const": true}
+      }
+    },
+    "humanization_policy": {
+      "type": "object",
+      "required": ["mode", "preserve", "remove_clusters", "domain_exemptions", "no_new_facts"],
+      "additionalProperties": false,
+      "properties": {
+        "mode": {"const": "identity_conditioned"},
+        "preserve": {"type": "array", "items": {"type": "string"}},
+        "remove_clusters": {"type": "array", "items": {"type": "string"}},
+        "domain_exemptions": {"type": "array", "items": {"type": "string"}},
+        "no_new_facts": {"const": true}
+      }
+    },
+    "layout_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "template_boundary",
+        "archetype_source",
+        "plan_before_prose",
+        "required_form_factors",
+        "single_asset_per_placeholder",
+        "avoid_fixed_three_three_three_summary",
+        "table_gate"
+      ],
+      "properties": {
+        "template_boundary": {"type": "string", "minLength": 1},
+        "archetype_source": {"const": "variation_contract.observable_axes.layout_archetype"},
+        "plan_before_prose": {"const": true},
+        "required_form_factors": {"type": "array", "minItems": 3, "items": {"type": "string"}, "uniqueItems": true},
+        "single_asset_per_placeholder": {"const": true},
+        "avoid_fixed_three_three_three_summary": {"const": true},
+        "table_gate": {"type": "string", "minLength": 1}
+      }
+    },
+    "caption_reference_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "independent_sequences",
+        "numbering",
+        "placeholder_format",
+        "caption_known_before_insertion",
+        "prose_cross_reference_required",
+        "forbid_multi_asset_placeholder"
+      ],
+      "properties": {
+        "independent_sequences": {"const": ["figure", "table"]},
+        "numbering": {"const": "chapter_or_section_aware"},
+        "placeholder_format": {"type": "string", "minLength": 1},
+        "caption_known_before_insertion": {"const": true},
+        "prose_cross_reference_required": {"const": true},
+        "forbid_multi_asset_placeholder": {"const": true}
+      }
+    },
+    "problem_evidence_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reserve_when_helpful", "allowed_positions", "requires_number_title_and_cross_reference", "do_not_fabricate_evidence"],
+      "properties": {
+        "reserve_when_helpful": {"type": "array", "minItems": 3, "items": {"type": "string"}, "uniqueItems": true},
+        "allowed_positions": {"const": ["after_problem", "between_problem_and_solution", "after_solution"]},
+        "requires_number_title_and_cross_reference": {"const": true},
+        "do_not_fabricate_evidence": {"const": true}
+      }
+    },
+    "candidate_policy": {
+      "type": "object",
+      "required": ["default_count", "high_collision_count", "rerank_by"],
+      "additionalProperties": false,
+      "properties": {
+        "default_count": {"type": "integer", "minimum": 1, "maximum": 3},
+        "high_collision_count": {"type": "integer", "minimum": 2, "maximum": 4},
+        "rerank_by": {"type": "array", "minItems": 3, "items": {"type": "string"}}
+      }
+    },
+    "required_quality_gates": {
+      "type": "array",
+      "minItems": 6,
+      "items": {"type": "string"},
+      "uniqueItems": true
+    },
+    "privacy": {
+      "type": "object",
+      "required": ["report_body_local_only", "sample_body_not_persisted", "cloud_style_id_only"],
+      "additionalProperties": false,
+      "properties": {
+        "report_body_local_only": {"const": true},
+        "sample_body_not_persisted": {"const": true},
+        "cloud_style_id_only": {"const": true}
+      }
+    }
+  }
+}

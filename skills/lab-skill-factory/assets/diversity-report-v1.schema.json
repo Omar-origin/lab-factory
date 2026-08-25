@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Lab Factory Cross-Report Diversity Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "ok", "gate", "mode", "coverage", "thresholds", "findings", "style_fingerprint", "structure_fingerprint", "privacy"],
+  "properties": {
+    "version": {"const": "1.0"},
+    "ok": {"type": "boolean"},
+    "gate": {"enum": ["pass", "blocked"]},
+    "mode": {"const": "cross_report_collision"},
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "comparison_count", "claim_boundary"],
+      "properties": {
+        "status": {"enum": ["evaluated", "baseline_unavailable"]},
+        "comparison_count": {"type": "integer", "minimum": 0},
+        "claim_boundary": {
+          "enum": [
+            "collision_checked_against_available_baseline",
+            "no_baseline_so_cross_report_difference_not_proven"
+          ]
+        }
+      }
+    },
+    "thresholds": {"type": "object", "additionalProperties": true},
+    "findings": {"type": "array", "items": {"type": "object"}},
+    "style_fingerprint": {"type": "object", "additionalProperties": true},
+    "structure_fingerprint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["eligible", "block_count", "flow_signature", "counts", "summary_shape"],
+      "properties": {
+        "eligible": {"type": "boolean"},
+        "block_count": {"type": "integer", "minimum": 0},
+        "flow_signature": {"type": "array", "items": {"type": "string"}},
+        "counts": {"type": "object", "additionalProperties": {"type": "integer"}},
+        "summary_shape": {"type": "string"}
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "required": ["stores_comparison_body", "stores_comparison_paths"],
+      "additionalProperties": false,
+      "properties": {
+        "stores_comparison_body": {"const": false},
+        "stores_comparison_paths": {"const": false}
+      }
+    }
+  }
+}

@@ -60,13 +60,14 @@ def post(url: str, payload: dict, token: str = "", order_token: str = "") -> tup
         return exc.code, json.loads(exc.read())
 
 
-def signed_payload(credential: dict, device_key: dict, install_id: str, action: str, nonce: str) -> dict:
+def signed_payload(credential: dict, device_key: dict, install_id: str, action: str, nonce: str, **signed_fields) -> dict:
     proof = {
         "action": action,
         "activation_token": credential["activation_token"],
         "install_id": install_id,
         "timestamp": utc_now(),
         "nonce": nonce,
+        **signed_fields,
     }
     return {
         "activation_token": credential["activation_token"],
@@ -140,6 +141,7 @@ def main() -> int:
             checkout = json.loads(response.read())
         tests += 1
         check(checkout["product"]["amount_cents"] == 990 and checkout["support_contact"] == "support@example.test", "checkout configuration is wrong")
+        check([(item["id"], item["amount_cents"]) for item in checkout["plans"]] == [("experience", 990), ("permanent", 4990)], "checkout plans are wrong")
         check("不支持无理由退款" in checkout["product"]["refund_policy"], "checkout refund policy is missing")
         check(checkout["product"]["self_service_refunds"] is False, "self-service refund capability was exposed")
         check(next(item for item in checkout["payment_providers"] if item["id"] == "alipay")["qr_image_url"] == "/payment-assets/alipay", "Alipay QR was not exposed through provider config")
@@ -147,7 +149,7 @@ def main() -> int:
 
         order_status, order_created = post(base_url + "/api/orders", {"contact": "buyer@example.test", "payment_provider": "alipay"})
         tests += 1
-        check(order_status == 201 and order_created["order"]["status"] == "payment_pending", "public order creation failed")
+        check(order_status == 201 and order_created["order"]["status"] == "payment_pending" and order_created["order"]["plan"] == "experience", "public experience order creation failed")
         order_token = order_created["status_token"]
         with sqlite3.connect(root / "control.sqlite3") as conn:
             serialized_orders = " ".join(str(value) for row in conn.execute("select * from orders") for value in row)
@@ -268,6 +270,53 @@ def main() -> int:
         refreshed, lease_payload = client.refresh_online_lease(credential)
         tests += 1
         check(lease_payload["license_key_id"] == key_id, "signed refresh lease has wrong key id")
+        check(lease_payload["plan"] == "permanent" and lease_payload["features"]["skill_condensation"], "existing permanent key lost its entitlement")
+
+        experience = store.create_key(label="experience", refund_days=7, plan="experience")
+        experience_device = create_device_key()
+        experience_activation = store.activate(
+            experience["activation_key"], "install_experience", experience_device["public_key"]
+        )
+        experience_payload = verify_lease(
+            experience_activation["lease"], public_record,
+            install_id="install_experience", product_id="lab-factory-1",
+        )
+        tests += 1
+        check(experience_payload["plan"] == "experience" and experience_payload["usage_limit"] == 3, "experience plan was not signed into the lease")
+        check(not experience_payload["features"]["skill_condensation"], "experience key unexpectedly unlocked skill condensation")
+        last_usage = None
+        for index in range(1, 4):
+            last_usage = store.consume_usage(signed_payload(
+                experience_activation, experience_device, "install_experience", "consume_usage",
+                f"experience-use-{index}", usage_id=f"report:{index}",
+            ))
+            check(last_usage["charged"] and last_usage["usage_count"] == index, "experience usage was not charged exactly once")
+        repeat_payload = signed_payload(
+            experience_activation, experience_device, "install_experience", "consume_usage",
+            "experience-repeat", usage_id="report:1",
+        )
+        repeat_status, repeat_body = post(base_url + "/api/usage/consume", repeat_payload)
+        repeated_usage = repeat_body
+        tests += 1
+        check(repeat_status == 200 and not repeated_usage["charged"] and repeated_usage["usage_count"] == 3 and repeated_usage["remaining_uses"] == 0, "usage retry was not idempotent")
+        fourth_status, fourth_body = post(base_url + "/api/usage/consume", signed_payload(
+            experience_activation, experience_device, "install_experience", "consume_usage",
+            "experience-fourth", usage_id="report:4",
+        ))
+        check(fourth_status == 403 and fourth_body["error"]["code"] == "USAGE_LIMIT_REACHED", "fourth experience use was not blocked")
+        tests += 1
+        original_activation_status = server.activation_status
+        try:
+            server.activation_status = lambda: {"activated": True, "plan": "experience", "features": {"skill_condensation": False}}
+            try:
+                server.require_feature("skill_condensation")
+                feature_blocked = False
+            except server.ToolError as exc:
+                feature_blocked = exc.code == "FEATURE_NOT_INCLUDED"
+        finally:
+            server.activation_status = original_activation_status
+        check(feature_blocked, "experience key was not blocked from skill condensation")
+        tests += 1
 
         device_record = client.installation_key()
         replay = signed_payload(refreshed, device_record, client.install_id(), "refresh", "fixed-replay-nonce")

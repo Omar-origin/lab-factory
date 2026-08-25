@@ -17,6 +17,7 @@ import os
 import re
 import secrets
 import shutil
+import statistics
 import tempfile
 import uuid
 import zipfile
@@ -48,6 +49,32 @@ AUTO_THRESHOLD = 0.90
 CONFIRM_THRESHOLD = 0.65
 AUTO_MARGIN = 0.15
 FAMILY_COMPATIBILITY_THRESHOLD = 0.72
+PERSONAL_PROFILE_VERSION = "1.0"
+WRITER_GENOME_VERSION = "3.0"
+
+AI_PROSE_PATTERNS: dict[str, re.Pattern[str]] = {
+    "significance_inflation": re.compile(
+        r"(?:标志着|彰显(?:了)?|凸显(?:了)?|体现(?:了)?|奠定(?:了)?基础|不可磨灭|关键转折点|不断演变的格局)"
+    ),
+    "promotional_language": re.compile(
+        r"(?:令人叹为观止|充满活力|丰富的文化|开创性的|无缝(?:的)?|卓越(?:的)?|迷人(?:的)?|必游之地)"
+    ),
+    "vague_attribution": re.compile(r"(?:行业报告显示|观察者指出|专家认为|一些批评者认为|多项研究表明)"),
+    "negative_parallelism": re.compile(r"(?:不仅仅?是|不只是).{0,32}(?:而且|更是|而是)"),
+    "formulaic_connectors": re.compile(r"(?:首先|其次|再次|此外|最后|综上所述|总而言之)"),
+    "generic_conclusion": re.compile(
+        r"(?:未来(?:发展)?前景(?:十分)?广阔|迈出了重要一步|具有十分重要的意义|为后续.{0,20}奠定了基础)"
+    ),
+    "chatbot_trace": re.compile(r"(?:希望这对你|希望这对您|如果您想|如果你想|请告诉我|当然[！!]|好问题[！!])"),
+    "empty_emphasis": re.compile(r"(?:至关重要|深入探讨|值得注意的是|毋庸置疑|不难发现)"),
+}
+
+TEMPLATE_OR_METADATA = re.compile(
+    r"^(?:实验(?:名称|题目|目的|要求|内容|步骤|环境|日期)|课程名称|指导教师|教师|姓名|学号|班级|学院|专业|成绩|评语|提交要求)\s*[:：]?\s*$"
+)
+CODE_LINE = re.compile(
+    r"^\s*(?:#include\b|import\s+[A-Za-z_]|from\s+[A-Za-z_.]+\s+import\b|def\s+\w+\s*\(|class\s+\w+|public\s+static\b|function\s+\w+|const\s+\w+\s*=|let\s+\w+\s*=|\w+\s*\([^)]*\)\s*\{)"
+)
 STATES = [
     "materials_scanned",
     "requirements_confirmed",
@@ -1644,6 +1671,274 @@ def extract_text(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
+def extract_paragraph_texts(path: Path) -> list[str]:
+    """Read paragraph-sized text units without returning them from privacy-safe analyzers."""
+    if path.suffix.lower() == ".docx":
+        paragraphs: list[str] = []
+        with zipfile.ZipFile(path) as archive:
+            for _, name in story_parts(archive.namelist()):
+                root = etree.fromstring(archive.read(name))
+                paragraphs.extend(
+                    element_text(paragraph)
+                    for paragraph in root.xpath(".//w:p", namespaces=NS)
+                    if element_text(paragraph)
+                )
+        return paragraphs
+    raw = path.read_text(encoding="utf-8", errors="replace")
+    return [line.strip() for line in raw.splitlines() if line.strip()]
+
+
+def authored_paragraphs(path: Path) -> list[str]:
+    allowed = {".docx", ".md", ".txt"}
+    if path.suffix.lower() not in allowed:
+        raise V2Error(f"Writing sample must be DOCX, Markdown, or text: {path.name}")
+    if not path.exists() or not path.is_file():
+        raise V2Error(f"Writing sample does not exist: {path}")
+    result: list[str] = []
+    in_code_fence = False
+    for raw in extract_paragraph_texts(path):
+        value = raw.strip()
+        if value.startswith("```"):
+            in_code_fence = not in_code_fence
+            continue
+        if in_code_fence or CODE_LINE.match(value):
+            continue
+        value = re.sub(r"^#{1,6}\s+", "", value)
+        list_marker = bool(re.match(r"^(?:[-*+]\s+|\d+[.)、]\s*)", value))
+        value = re.sub(r"^(?:[-*+]\s+|\d+[.)、]\s*)", "", value).strip()
+        compact = compact_text(value)
+        if not compact or len(compact) < 12:
+            continue
+        if TEMPLATE_OR_METADATA.match(value) or value == DISCLAIMER_TEXT:
+            continue
+        if re.match(r"^\d+(?:\.\d+){0,4}\s+[^。！？!?]{1,30}$", value):
+            continue
+        if value.count("|") >= 2 or re.fullmatch(r"[-=_*`~|\s]+", value):
+            continue
+        ascii_symbols = sum(1 for char in value if ord(char) < 128 and not char.isalnum() and not char.isspace())
+        if ascii_symbols / max(1, len(value)) > 0.28:
+            continue
+        result.append(("• " if list_marker else "") + value)
+    return result
+
+
+def numeric_summary(values: list[int]) -> dict[str, float | int]:
+    if not values:
+        return {"count": 0, "mean": 0.0, "median": 0.0, "stdev": 0.0, "cv": 0.0}
+    mean = statistics.fmean(values)
+    stdev = statistics.pstdev(values) if len(values) > 1 else 0.0
+    return {
+        "count": len(values),
+        "mean": round(mean, 3),
+        "median": round(float(statistics.median(values)), 3),
+        "stdev": round(stdev, 3),
+        "cv": round(stdev / mean, 4) if mean else 0.0,
+    }
+
+
+def pattern_findings(text: str) -> list[dict[str, Any]]:
+    findings = []
+    for pattern_id, pattern in AI_PROSE_PATTERNS.items():
+        count = len(pattern.findall(text))
+        if count:
+            findings.append({"id": pattern_id, "count": count})
+    return findings
+
+
+def first_keyword_position(paragraphs: list[str], keywords: tuple[str, ...]) -> int:
+    return next(
+        (index for index, paragraph in enumerate(paragraphs) if any(keyword in paragraph for keyword in keywords)),
+        len(paragraphs) + 1,
+    )
+
+
+def style_fingerprint_from_paragraphs(paragraphs: list[str]) -> dict[str, Any]:
+    plain = [re.sub(r"^•\s+", "", item) for item in paragraphs]
+    text = "\n".join(plain)
+    sentences = [compact_text(item) for item in sentence_units(text) if len(compact_text(item)) >= 4]
+    sentence_lengths = [len(item) for item in sentences]
+    paragraph_lengths = [len(compact_text(item)) for item in plain]
+    connectors = re.findall(r"(?:首先|其次|再次|此外|然后|随后|因此|但是|不过|最后|综上所述)", text)
+    first_person = re.findall(r"(?:我|我们|本人)", text)
+    total_chars = max(1, len(compact_text(text)))
+    return {
+        "sentence_length": numeric_summary(sentence_lengths),
+        "paragraph_length": numeric_summary(paragraph_lengths),
+        "connector_rate_per_1000_chars": round(len(connectors) * 1000 / total_chars, 4),
+        "first_person_rate_per_1000_chars": round(len(first_person) * 1000 / total_chars, 4),
+        "list_paragraph_ratio": round(sum(item.startswith("• ") for item in paragraphs) / max(1, len(paragraphs)), 4),
+    }
+
+
+def analyze_writing_samples(paths: list[Path]) -> dict[str, Any]:
+    if not paths or len(paths) > 3:
+        raise V2Error("Provide between one and three prior writing samples")
+    all_paragraphs: list[str] = []
+    sample_ids: list[str] = []
+    usable = 0
+    for path in paths:
+        resolved = path.expanduser().resolve()
+        paragraphs = authored_paragraphs(resolved)
+        if paragraphs:
+            usable += 1
+            all_paragraphs.extend(paragraphs)
+        sample_ids.append("sample_" + file_sha256(resolved)[:16])
+    if not all_paragraphs:
+        raise V2Error("The supplied files contain too little authored prose after removing templates, metadata, and code")
+
+    plain_paragraphs = [re.sub(r"^•\s+", "", item) for item in all_paragraphs]
+    text = "\n".join(plain_paragraphs)
+    compact = compact_text(text)
+    sentences = [compact_text(item) for item in sentence_units(text) if len(compact_text(item)) >= 4]
+    sentence_stats = numeric_summary([len(item) for item in sentences])
+    paragraph_stats = numeric_summary([len(compact_text(item)) for item in plain_paragraphs])
+    total_chars = len(compact)
+    connector_count = len(re.findall(r"(?:首先|其次|再次|此外|然后|随后|因此|但是|不过|最后|综上所述)", text))
+    first_person_count = len(re.findall(r"(?:我|我们|本人)", text))
+    list_ratio = sum(item.startswith("• ") for item in all_paragraphs) / max(1, len(all_paragraphs))
+    latin_terms = re.findall(r"\b[A-Za-z][A-Za-z0-9_+.#/-]{1,}\b", text)
+    parenthetical_definitions = re.findall(r"[（(][^）)\n]{2,30}[）)]", text)
+    term_rate = (len(latin_terms) + len(parenthetical_definitions)) * 1000 / max(1, total_chars)
+
+    sentence_median = float(sentence_stats["median"])
+    sentence_cv = float(sentence_stats["cv"])
+    if sentence_median <= 24 and sentence_cv < 0.55:
+        sentence_style = "short"
+        sentence_rhythm = "以短句为主，句长变化较小"
+    elif sentence_median >= 46 and sentence_cv < 0.65:
+        sentence_style = "long"
+        sentence_rhythm = "以完整的中长句为主"
+    else:
+        sentence_style = "mixed"
+        sentence_rhythm = "短句和中长句混合"
+
+    paragraph_median = float(paragraph_stats["median"])
+    detail_level = "concise" if paragraph_median < 85 else "detailed" if paragraph_median > 210 else "balanced"
+    terminology_density = "low" if term_rate < 4 else "high" if term_rate > 14 else "medium"
+    connector_rate = connector_count * 1000 / max(1, total_chars)
+    connector_density = "low" if connector_rate < 5 else "high" if connector_rate > 14 else "medium"
+    person_rate = first_person_count * 1000 / max(1, total_chars)
+    person_voice = "limited_first_person" if person_rate < 2 else "moderate_first_person" if person_rate < 8 else "frequent_first_person"
+    voice_tone = "personal" if person_rate >= 4 else "technical" if terminology_density == "high" else "formal"
+
+    order_positions = {
+        "principle_first": first_keyword_position(plain_paragraphs, ("原理", "概念", "机制", "理论")),
+        "procedure_first": first_keyword_position(plain_paragraphs, ("步骤", "配置", "运行", "操作", "实现")),
+        "result_first": first_keyword_position(plain_paragraphs, ("结果", "输出", "现象", "验证", "得到")),
+    }
+    analysis_order = min(order_positions, key=order_positions.get)
+    if len(set(order_positions.values())) == 1:
+        analysis_order = "principle_first"
+
+    reflection_hits = {
+        "learning_process": sum(text.count(word) for word in ("理解", "掌握", "学习", "认识到")),
+        "problem_solving": sum(text.count(word) for word in ("问题", "报错", "解决", "排查", "修复")),
+        "engineering": sum(text.count(word) for word in ("效率", "维护", "复用", "性能", "工程")),
+        "critical_improvement": sum(text.count(word) for word in ("不足", "局限", "改进", "优化", "仍然")),
+    }
+    reflection_depth = max(reflection_hits, key=reflection_hits.get)
+    if not reflection_hits[reflection_depth]:
+        reflection_depth = "problem_solving"
+
+    confidence_score = min(0.95, 0.3 + usable * 0.15 + min(total_chars, 4000) / 10000)
+    confidence_level = "low" if confidence_score < 0.6 else "medium" if confidence_score < 0.82 else "high"
+    limitations = []
+    if usable == 1:
+        limitations.append("只有一份样本，可能混入单次课程或模板影响")
+    if total_chars < 800:
+        limitations.append("可分析的本人正文不足 800 字，画像按低置信度使用")
+    if usable < len(paths):
+        limitations.append("部分文件在去除模板、元数据和代码后没有足够正文")
+
+    excluded = [dict(item, action="do_not_learn") for item in pattern_findings(text)]
+    list_preference = "low" if list_ratio < 0.08 else "high" if list_ratio > 0.3 else "medium"
+    preserve = [sentence_rhythm, f"段落详略：{detail_level}", f"分析顺序：{analysis_order}", f"人称习惯：{person_voice}"]
+    return {
+        "version": PERSONAL_PROFILE_VERSION,
+        "kind": "personal_writing_profile",
+        "sample_summary": {
+            "sample_count": len(paths),
+            "usable_sample_count": usable,
+            "authored_char_count": total_chars,
+            "sample_ids": sorted(set(sample_ids)),
+        },
+        "confidence": {"level": confidence_level, "score": round(confidence_score, 3), "limitations": limitations},
+        "features": {
+            "sentence_rhythm": sentence_rhythm,
+            "sentence_length_stats": sentence_stats,
+            "paragraph_pattern": f"段落长度倾向为 {detail_level}",
+            "paragraph_length_stats": paragraph_stats,
+            "analysis_order": analysis_order,
+            "terminology_handling": f"术语密度 {terminology_density}，括号释义 {len(parenthetical_definitions)} 次",
+            "person_voice": person_voice,
+            "reflection_pattern": reflection_depth,
+            "connector_density": connector_density,
+            "list_preference": list_preference,
+        },
+        "recommended_preferences": {
+            "writing_level": "natural_undergrad",
+            "detail_level": detail_level,
+            "sentence_paragraph_style": sentence_style,
+            "terminology_density": terminology_density,
+            "voice_tone": voice_tone,
+            "analysis_order": analysis_order,
+            "reflection_depth": reflection_depth,
+            "variation_strength": "medium",
+        },
+        "humanization_preferences": {
+            "preserve": preserve,
+            "do_not_learn": [item["id"] for item in excluded],
+            "rule": "保留稳定写作习惯，不学习模板原文、报告答案或公式化 AI 表达",
+        },
+        "excluded_patterns": excluded,
+        "privacy": {
+            "stores_report_body": False,
+            "stores_source_paths": False,
+            "stores_personal_identifiers": False,
+            "local_analysis_only": True,
+        },
+    }
+
+
+def humanization_audit(path: Path) -> dict[str, Any]:
+    paragraphs = authored_paragraphs(path.expanduser().resolve())
+    if not paragraphs:
+        raise V2Error("The document contains too little authored prose for humanization audit")
+    text = "\n".join(re.sub(r"^•\s+", "", item) for item in paragraphs)
+    compact = compact_text(text)
+    findings = pattern_findings(text)
+    categories = len(findings)
+    hits = sum(item["count"] for item in findings)
+    density = hits * 1000 / max(1, len(compact))
+    chatbot_hits = next((item["count"] for item in findings if item["id"] == "chatbot_trace"), 0)
+    rewrite = chatbot_hits > 0 or (categories >= 3 and density >= 5.0)
+    reported = [
+        dict(item, severity="rewrite" if rewrite and item["id"] != "formulaic_connectors" else "notice")
+        for item in findings
+    ]
+    fingerprint = style_fingerprint_from_paragraphs(paragraphs)
+    return {
+        "version": "1.0",
+        "status": "retryable_failure" if rewrite else "pass",
+        "metrics": {
+            "authored_char_count": len(compact),
+            "pattern_category_count": categories,
+            "pattern_hit_count": hits,
+            "pattern_hits_per_1000_chars": round(density, 4),
+            "sentence_length_cv": fingerprint["sentence_length"]["cv"],
+            "paragraph_length_cv": fingerprint["paragraph_length"]["cv"],
+        },
+        "pattern_findings": reported,
+        "domain_exemptions": ["课程固定术语", "代码与命令", "公式", "引用", "老师模板标题", "技术方法中的必要被动表达"],
+        "required_attestations": [
+            "改写未添加材料中不存在的事实、经历、数据、报错或引用",
+            "第一人称操作和观察均有真实材料或用户确认支持",
+            "专业表达保持本科生能力边界，不伪装教师或行业专家",
+        ],
+        "detector_policy": "ai_detector_scores_are_not_quality_gates",
+    }
+
+
 def sentence_units(text: str) -> list[str]:
     return [item.strip() for item in re.split(r"(?<=[。！？!?；;])|\n+", text) if item.strip()]
 
@@ -1696,6 +1991,305 @@ def similarity_check(generated: Path, references: list[Path], whitelist: list[st
         "thresholds": {"continuous_chars": 40, "sentence_similarity": 0.88, "sentence_hits": 2, "5gram_overlap": 0.25},
         "findings": findings,
         "rewrite_required": bool(blocked_findings),
+    }
+
+
+def style_fingerprint_distance(left: dict[str, Any], right: dict[str, Any]) -> float:
+    pairs = [
+        (float(left["sentence_length"]["mean"]), float(right["sentence_length"]["mean"]), 45.0),
+        (float(left["sentence_length"]["cv"]), float(right["sentence_length"]["cv"]), 1.0),
+        (float(left["paragraph_length"]["mean"]), float(right["paragraph_length"]["mean"]), 220.0),
+        (float(left["connector_rate_per_1000_chars"]), float(right["connector_rate_per_1000_chars"]), 20.0),
+        (float(left["first_person_rate_per_1000_chars"]), float(right["first_person_rate_per_1000_chars"]), 15.0),
+        (float(left["list_paragraph_ratio"]), float(right["list_paragraph_ratio"]), 0.6),
+    ]
+    distances = [min(1.0, abs(a - b) / scale) for a, b, scale in pairs]
+    return round(statistics.fmean(distances), 4)
+
+
+NUMBERED_EVIDENCE_PLACEHOLDER = re.compile(
+    r"【\s*(图|表)\s*(\d+(?:[-－—.]\d+)*)\s*[：:]\s*([^】；;]+)(?:[；;][^】]*)?】"
+)
+GENERIC_EVIDENCE_PLACEHOLDER = re.compile(r"【\s*(?:截图|绘图|图片|图表|表格|图|表)[^】]*】")
+FIGURE_OR_TABLE_REFERENCE = re.compile(r"(?:如|见|参见|详见)?\s*(图|表)\s*(\d+(?:[-－—.]\d+)*)")
+
+
+def normalized_evidence_id(kind: str, value: str) -> str:
+    return kind + value.replace("－", "-").replace("—", "-").replace(".", "-")
+
+
+def structure_fingerprint(path: Path) -> dict[str, Any]:
+    authored = authored_paragraphs(path)
+    flow: list[str] = []
+    counts = {
+        "prose_short": 0,
+        "prose_medium": 0,
+        "prose_long": 0,
+        "list_item": 0,
+        "problem_solution": 0,
+        "numbered_figure": 0,
+        "numbered_table": 0,
+        "unnumbered_evidence": 0,
+    }
+    for raw in authored:
+        value = re.sub(r"^•\s+", "", raw).strip()
+        numbered = list(NUMBERED_EVIDENCE_PLACEHOLDER.finditer(value))
+        generic = list(GENERIC_EVIDENCE_PLACEHOLDER.finditer(value))
+        if numbered:
+            for match in numbered:
+                category = "numbered_figure" if match.group(1) == "图" else "numbered_table"
+                counts[category] += 1
+                flow.append(category)
+            value = NUMBERED_EVIDENCE_PLACEHOLDER.sub("", value).strip()
+        elif generic:
+            counts["unnumbered_evidence"] += len(generic)
+            flow.extend(["unnumbered_evidence"] * len(generic))
+            value = GENERIC_EVIDENCE_PLACEHOLDER.sub("", value).strip()
+        if not value:
+            continue
+        if re.match(r"^问题\s*\d+\s*[：:]", value):
+            category = "problem_solution"
+        elif raw.startswith("• "):
+            category = "list_item"
+        else:
+            length = len(compact_text(value))
+            category = "prose_short" if length < 90 else "prose_long" if length >= 210 else "prose_medium"
+        counts[category] += 1
+        flow.append(category)
+
+    problem_count = counts["problem_solution"]
+    list_count = counts["list_item"]
+    if problem_count == 3 and list_count >= 6:
+        summary_shape = "fixed_three_three_three"
+    elif problem_count:
+        summary_shape = "paired_problem_solution"
+    elif list_count:
+        summary_shape = "list_or_takeaways"
+    else:
+        summary_shape = "narrative"
+    return {
+        "eligible": path.suffix.lower() == ".docx" and len(flow) >= 8,
+        "block_count": len(flow),
+        "flow_signature": flow,
+        "counts": counts,
+        "summary_shape": summary_shape,
+    }
+
+
+def structure_fingerprint_similarity(left: dict[str, Any], right: dict[str, Any]) -> tuple[float, float]:
+    flow_similarity = difflib.SequenceMatcher(
+        None, left.get("flow_signature", []), right.get("flow_signature", []), autojunk=False
+    ).ratio()
+    keys = set(left.get("counts", {})) | set(right.get("counts", {}))
+    count_distances = []
+    for key in keys:
+        a = int(left.get("counts", {}).get(key, 0))
+        b = int(right.get("counts", {}).get(key, 0))
+        count_distances.append(abs(a - b) / max(1, a, b))
+    count_similarity = 1.0 - statistics.fmean(count_distances) if count_distances else 1.0
+    return round(flow_similarity, 4), round(count_similarity, 4)
+
+
+def document_structure_audit(path: Path) -> dict[str, Any]:
+    resolved = path.expanduser().resolve()
+    paragraphs = extract_paragraph_texts(resolved)
+    full_text = "\n".join(paragraphs)
+    numbered = list(NUMBERED_EVIDENCE_PLACEHOLDER.finditer(full_text))
+    generic = list(GENERIC_EVIDENCE_PLACEHOLDER.finditer(full_text))
+    entries = [
+        {
+            "kind": match.group(1),
+            "id": normalized_evidence_id(match.group(1), match.group(2)),
+            "title": match.group(3).strip(),
+        }
+        for match in numbered
+    ]
+    ids = [item["id"] for item in entries]
+    duplicate_ids = sorted({item for item in ids if ids.count(item) > 1})
+    prose_without_placeholders = GENERIC_EVIDENCE_PLACEHOLDER.sub("", full_text)
+    referenced_ids = {
+        normalized_evidence_id(match.group(1), match.group(2))
+        for match in FIGURE_OR_TABLE_REFERENCE.finditer(prose_without_placeholders)
+    }
+    missing_cross_references = sorted(set(ids) - referenced_ids)
+    unnumbered_placeholders = [
+        match.group(0)[:160]
+        for match in generic
+        if not NUMBERED_EVIDENCE_PLACEHOLDER.fullmatch(match.group(0))
+    ]
+    multi_asset_placeholders = []
+    for match in generic:
+        value = match.group(0)
+        asset_mentions = len(re.findall(r"(?:类图|活动图|状态图|时序图|流程图|截图|表格)", value))
+        if asset_mentions > 1 or (asset_mentions and re.search(r"[、,，]|以及|和", value)):
+            multi_asset_placeholders.append(value[:160])
+
+    table_keywords = (
+        "字段", "数据表", "核心表", "类名", "职责", "输入", "输出", "异常处理", "测试用例",
+        "配置项", "对比", "主键", "外键", "属性", "方法", "状态", "关系",
+    )
+    table_scope_end_candidates = [
+        position for marker in ("实验小结", "问题和解决办法")
+        if (position := full_text.find(marker)) > 0
+    ]
+    table_scope = full_text[:min(table_scope_end_candidates)] if table_scope_end_candidates else full_text
+    matched_table_keywords = {keyword for keyword in table_keywords if keyword in table_scope}
+    has_numbered_table = any(item["kind"] == "表" for item in entries)
+    explicit_table_signal = any(keyword in matched_table_keywords for keyword in ("字段", "数据表", "核心表", "测试用例"))
+    table_required_by_content = (
+        (explicit_table_signal and len(matched_table_keywords) >= 2)
+        or len(matched_table_keywords) >= 4
+    )
+    table_decision_recorded = has_numbered_table or not table_required_by_content
+
+    summary_start = full_text.find("问题和解决办法")
+    summary_text = full_text[summary_start:] if summary_start >= 0 else ""
+    if summary_text:
+        summary_end_candidates = [
+            position for marker in ("考核结果", "教师评语", DISCLAIMER_TEXT)
+            if (position := summary_text.find(marker)) > 0
+        ]
+        if summary_end_candidates:
+            summary_text = summary_text[:min(summary_end_candidates)]
+    problem_evidence_needed = any(
+        keyword in summary_text for keyword in ("报错", "错误提示", "异常界面", "运行结果", "配置界面", "前后对比")
+    )
+    problem_has_numbered_figure = any(
+        match.group(1) == "图" for match in NUMBERED_EVIDENCE_PLACEHOLDER.finditer(summary_text)
+    )
+    problem_evidence_decision_recorded = problem_has_numbered_figure or not problem_evidence_needed
+
+    unresolved_template_cues = sorted({
+        value[:160]
+        for value in paragraphs
+        if re.search(r"(?:\d+(?:\.\d+)+\s+[^\n]{0,30}XXX|XXX\s*功能|<[^>]{1,80}>)", value)
+    })
+    evidence_expected = bool(generic) or any(
+        keyword in full_text for keyword in ("需要截图", "补充截图", "绘制", "图中", "如图", "见图", "可视化图", "波形图", "拓扑图")
+    )
+    caption_cross_reference_ok = (
+        (bool(entries) or not evidence_expected)
+        and not duplicate_ids
+        and not missing_cross_references
+        and not unnumbered_placeholders
+    )
+    single_asset_ok = not multi_asset_placeholders
+    fingerprint = structure_fingerprint(resolved)
+    failures = []
+    if evidence_expected and not entries:
+        failures.append("没有预先编号并命名的图表占位")
+    if duplicate_ids:
+        failures.append("图表编号重复")
+    if missing_cross_references:
+        failures.append("正文缺少图表编号交叉引用")
+    if unnumbered_placeholders:
+        failures.append("仍有未编号或未命名的图表占位")
+    if multi_asset_placeholders:
+        failures.append("一个占位包含多个图表")
+    if not table_decision_recorded:
+        failures.append("存在适合行列表达的内容，但没有编号表格或表格占位")
+    if not problem_evidence_decision_recorded:
+        failures.append("问题/解决办法需要直观证据，但没有编号图片占位")
+    if unresolved_template_cues:
+        failures.append("仍有正文或目录结构占位提示")
+    return {
+        "version": "1.0",
+        "status": "pass" if not failures else "retryable_failure",
+        "caption_cross_reference_ok": caption_cross_reference_ok,
+        "single_asset_per_placeholder_ok": single_asset_ok,
+        "table_decision_recorded": table_decision_recorded,
+        "problem_evidence_decision_recorded": problem_evidence_decision_recorded,
+        "unresolved_template_cues": unresolved_template_cues,
+        "structure_fingerprint": fingerprint,
+        "evidence_counts": {
+            "numbered_figures": sum(item["kind"] == "图" for item in entries),
+            "numbered_tables": sum(item["kind"] == "表" for item in entries),
+            "unnumbered_placeholders": len(unnumbered_placeholders),
+        },
+        "missing_cross_references": missing_cross_references,
+        "duplicate_ids": duplicate_ids,
+        "multi_asset_placeholders": multi_asset_placeholders,
+        "table_required_by_content": table_required_by_content,
+        "problem_evidence_needed": problem_evidence_needed,
+        "failures": failures,
+    }
+
+
+def cohort_similarity_check(generated: Path, comparisons: list[Path], whitelist: list[str]) -> dict[str, Any]:
+    generated_raw = extract_text(generated)
+    for phrase in whitelist:
+        generated_raw = generated_raw.replace(phrase, "")
+    generated_compact = compact_text(generated_raw)
+    generated_sentences = [compact_text(item) for item in sentence_units(generated_raw)]
+    generated_fingerprint = style_fingerprint_from_paragraphs(authored_paragraphs(generated))
+    generated_structure = structure_fingerprint(generated)
+    findings = []
+    for comparison in comparisons:
+        comparison_raw = extract_text(comparison)
+        for phrase in whitelist:
+            comparison_raw = comparison_raw.replace(phrase, "")
+        comparison_compact = compact_text(comparison_raw)
+        longest = difflib.SequenceMatcher(None, generated_compact, comparison_compact, autojunk=False).find_longest_match()
+        comparison_sentences = [compact_text(item) for item in sentence_units(comparison_raw)]
+        sentence_hits = 0
+        for sentence in generated_sentences:
+            if len(sentence) < 30:
+                continue
+            best = max((ratio(sentence, other) for other in comparison_sentences if len(other) >= 30), default=0.0)
+            sentence_hits += int(best >= 0.88)
+        generated_grams = ngrams(generated_compact)
+        comparison_grams = ngrams(comparison_compact)
+        overlap = len(generated_grams & comparison_grams) / max(1, len(generated_grams))
+        comparison_fingerprint = style_fingerprint_from_paragraphs(authored_paragraphs(comparison))
+        style_distance = style_fingerprint_distance(generated_fingerprint, comparison_fingerprint)
+        comparison_structure = structure_fingerprint(comparison)
+        flow_similarity, count_similarity = structure_fingerprint_similarity(generated_structure, comparison_structure)
+        structural_collision = (
+            generated_structure["eligible"]
+            and comparison_structure["eligible"]
+            and flow_similarity >= 0.90
+            and count_similarity >= 0.90
+        )
+        blocked = longest.size >= 40 or sentence_hits >= 2 or overlap > 0.25 or structural_collision
+        findings.append({
+            "comparison_id": "report_" + file_sha256(comparison)[:16],
+            "blocked": blocked,
+            "longest_common_length": longest.size,
+            "similar_sentence_count": sentence_hits,
+            "generated_5gram_overlap": round(overlap, 4),
+            "style_fingerprint_distance": style_distance,
+            "style_distance_notice": style_distance < 0.12,
+            "structure_flow_similarity": flow_similarity,
+            "structure_count_similarity": count_similarity,
+            "structural_collision": structural_collision,
+        })
+    blocked_findings = [item for item in findings if item["blocked"]]
+    return {
+        "version": "1.0",
+        "ok": not blocked_findings,
+        "gate": "pass" if not blocked_findings else "blocked",
+        "mode": "cross_report_collision",
+        "coverage": {
+            "status": "evaluated" if comparisons else "baseline_unavailable",
+            "comparison_count": len(comparisons),
+            "claim_boundary": (
+                "collision_checked_against_available_baseline"
+                if comparisons else "no_baseline_so_cross_report_difference_not_proven"
+            ),
+        },
+        "thresholds": {
+            "continuous_chars": 40,
+            "sentence_similarity": 0.88,
+            "sentence_hits": 2,
+            "5gram_overlap": 0.25,
+            "style_distance_notice_below": 0.12,
+            "structure_flow_similarity": 0.90,
+            "structure_count_similarity": 0.90,
+        },
+        "findings": findings,
+        "style_fingerprint": generated_fingerprint,
+        "structure_fingerprint": generated_structure,
+        "privacy": {"stores_comparison_body": False, "stores_comparison_paths": False},
     }
 
 
@@ -1925,6 +2519,10 @@ def main() -> int:
     writing_parser.add_argument("--overrides-json", default="{}")
     writing_parser.add_argument("--output", required=True)
 
+    sample_profile_parser = sub.add_parser("analyze-writing-samples")
+    sample_profile_parser.add_argument("samples", nargs="+")
+    sample_profile_parser.add_argument("--output", required=True)
+
     style_parser = sub.add_parser("validate-style-card")
     style_parser.add_argument("style_card")
 
@@ -1935,6 +2533,19 @@ def main() -> int:
     similarity_parser.add_argument("generated")
     similarity_parser.add_argument("references", nargs="+")
     similarity_parser.add_argument("--whitelist-json", default="[]")
+
+    cohort_parser = sub.add_parser("cohort-similarity")
+    cohort_parser.add_argument("generated")
+    cohort_parser.add_argument("comparisons", nargs="*")
+    cohort_parser.add_argument("--whitelist-json", default="[]")
+
+    humanization_parser = sub.add_parser("humanization-audit")
+    humanization_parser.add_argument("document")
+    humanization_parser.add_argument("--output")
+
+    structure_parser = sub.add_parser("document-structure-audit")
+    structure_parser.add_argument("document")
+    structure_parser.add_argument("--output")
 
     migrate_parser = sub.add_parser("migrate-v1")
     migrate_parser.add_argument("fill_map")
@@ -2014,6 +2625,11 @@ def main() -> int:
             result = create_writing_profile(args.subject, args.preset, json.loads(args.overrides_json))
             write_json(Path(args.output).resolve(), result)
             result = {"ok": True, "writing_profile_path": str(Path(args.output).resolve()), "profile": result}
+        elif args.command == "analyze-writing-samples":
+            profile = analyze_writing_samples([Path(item) for item in args.samples])
+            output = Path(args.output).expanduser().resolve()
+            write_json(output, profile)
+            result = {"ok": True, "personal_writing_profile_path": str(output), "profile": profile}
         elif args.command == "validate-style-card":
             errors = validate_style_card(load_json(Path(args.style_card)))
             result = {"ok": not errors, "errors": errors}
@@ -2025,6 +2641,25 @@ def main() -> int:
             if not isinstance(whitelist, list) or not all(isinstance(item, str) for item in whitelist):
                 raise V2Error("whitelist-json must be an array of strings")
             result = similarity_check(Path(args.generated).resolve(), [Path(item).resolve() for item in args.references], whitelist)
+        elif args.command == "cohort-similarity":
+            whitelist = json.loads(args.whitelist_json)
+            if not isinstance(whitelist, list) or not all(isinstance(item, str) for item in whitelist):
+                raise V2Error("whitelist-json must be an array of strings")
+            result = cohort_similarity_check(
+                Path(args.generated).resolve(), [Path(item).resolve() for item in args.comparisons], whitelist
+            )
+        elif args.command == "humanization-audit":
+            result = humanization_audit(Path(args.document).resolve())
+            if args.output:
+                output = Path(args.output).expanduser().resolve()
+                write_json(output, result)
+                result["audit_path"] = str(output)
+        elif args.command == "document-structure-audit":
+            result = document_structure_audit(Path(args.document).resolve())
+            if args.output:
+                output = Path(args.output).expanduser().resolve()
+                write_json(output, result)
+                result["audit_path"] = str(output)
         elif args.command == "migrate-v1":
             migration = migrate_v1(load_json(Path(args.fill_map)))
             write_json(Path(args.output).resolve(), migration)

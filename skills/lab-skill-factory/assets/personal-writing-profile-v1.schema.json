@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Lab Factory Personal Writing Profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "kind",
+    "sample_summary",
+    "confidence",
+    "features",
+    "recommended_preferences",
+    "humanization_preferences",
+    "excluded_patterns",
+    "privacy"
+  ],
+  "properties": {
+    "version": {"const": "1.0"},
+    "kind": {"const": "personal_writing_profile"},
+    "sample_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sample_count", "usable_sample_count", "authored_char_count", "sample_ids"],
+      "properties": {
+        "sample_count": {"type": "integer", "minimum": 1},
+        "usable_sample_count": {"type": "integer", "minimum": 1},
+        "authored_char_count": {"type": "integer", "minimum": 1},
+        "sample_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "pattern": "^sample_[0-9a-f]{16}$"},
+          "uniqueItems": true
+        }
+      }
+    },
+    "confidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["level", "score", "limitations"],
+      "properties": {
+        "level": {"enum": ["low", "medium", "high"]},
+        "score": {"type": "number", "minimum": 0, "maximum": 1},
+        "limitations": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "features": {
+      "type": "object",
+      "required": [
+        "sentence_rhythm",
+        "paragraph_pattern",
+        "analysis_order",
+        "terminology_handling",
+        "person_voice",
+        "reflection_pattern",
+        "connector_density",
+        "list_preference"
+      ],
+      "additionalProperties": true
+    },
+    "recommended_preferences": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "writing_level",
+        "detail_level",
+        "sentence_paragraph_style",
+        "terminology_density",
+        "voice_tone",
+        "analysis_order",
+        "reflection_depth",
+        "variation_strength"
+      ],
+      "properties": {
+        "writing_level": {"enum": ["basic", "natural_undergrad", "mature"]},
+        "detail_level": {"enum": ["concise", "balanced", "detailed"]},
+        "sentence_paragraph_style": {"enum": ["short", "mixed", "long"]},
+        "terminology_density": {"enum": ["low", "medium", "high"]},
+        "voice_tone": {"enum": ["plain", "formal", "technical", "personal"]},
+        "analysis_order": {"enum": ["principle_first", "procedure_first", "result_first"]},
+        "reflection_depth": {"enum": ["learning_process", "problem_solving", "engineering", "critical_improvement"]},
+        "variation_strength": {"enum": ["low", "medium", "high"]}
+      }
+    },
+    "humanization_preferences": {
+      "type": "object",
+      "required": ["preserve", "do_not_learn"],
+      "properties": {
+        "preserve": {"type": "array", "items": {"type": "string"}},
+        "do_not_learn": {"type": "array", "items": {"type": "string"}}
+      },
+      "additionalProperties": true
+    },
+    "excluded_patterns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "count", "action"],
+        "properties": {
+          "id": {"type": "string"},
+          "count": {"type": "integer", "minimum": 1},
+          "action": {"const": "do_not_learn"}
+        }
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stores_report_body", "stores_source_paths", "stores_personal_identifiers", "local_analysis_only"],
+      "properties": {
+        "stores_report_body": {"const": false},
+        "stores_source_paths": {"const": false},
+        "stores_personal_identifiers": {"const": false},
+        "local_analysis_only": {"const": true}
+      }
+    }
+  }
+}

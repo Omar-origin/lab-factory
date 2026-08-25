@@ -53,19 +53,36 @@ def main() -> int:
     status, config = call(base, "GET", "/api/checkout/config")
     check(status == 200 and [item["id"] for item in config["payment_providers"] if item["available"]] == ["alipay"], "checkout providers are wrong")
     check(config["support_contact"] == "售后QQ群：923937311", "support contact is wrong")
+    check([(item["id"], item["amount_cents"]) for item in config["plans"]] == [("experience", 990), ("permanent", 4990)], "license plans or prices are wrong")
     tests += 1
     status, qr = call(base, "GET", "/payment-assets/alipay.png")
     check(status == 200 and isinstance(qr, bytes) and len(qr) > 1000, "Alipay QR asset failed")
     tests += 1
     status, admin_script = call(base, "GET", "/admin/control.js")
-    check(status == 200 and isinstance(admin_script, bytes) and b"confirm-and-deliver" in admin_script, "admin static assets were blocked by API authentication")
+    check(status == 200 and isinstance(admin_script, bytes) and b"confirm-and-deliver" in admin_script and b"plan" in admin_script, "admin static assets or plan selector were blocked")
+    status, purchase_page = call(base, "GET", "/buy/index.html")
+    check(status == 200 and isinstance(purchase_page, bytes) and "49.9 永久版".encode() in purchase_page and b"planChoices" in purchase_page, "purchase page does not expose both plans")
     tests += 1
     status, unauthenticated = call(base, "GET", "/admin/orders")
     check(status == 401 and unauthenticated["error"]["code"] == "ADMIN_AUTH_REQUIRED", "admin API was exposed without authentication")
     tests += 1
 
-    status, created = call(base, "POST", "/api/orders", {"contact": "worker-test@example.test", "payment_provider": "alipay"})
-    check(status == 201 and created["order"]["status"] == "payment_pending", "order creation failed")
+    status, permanent_key = call(base, "POST", "/admin/keys", {"plan": "permanent", "label": "worker permanent"}, admin_headers)
+    check(status == 201 and permanent_key["key"]["plan"] == "permanent" and permanent_key["key"]["usage_limit"] is None, "permanent key creation failed")
+    permanent_device = create_device_key()
+    status, permanent_activation = call(base, "POST", "/api/activate", {
+        "activation_key": permanent_key["activation_key"], "install_id": "install_worker_permanent",
+        "device_public_key": permanent_device["public_key"],
+    })
+    public_record = json.loads((MCP_DIR / "lease_public_key.json").read_text())
+    permanent_payload = verify_lease(permanent_activation["lease"], public_record, install_id="install_worker_permanent", product_id="lab-factory-1")
+    check(status == 200 and permanent_payload["plan"] == "permanent" and permanent_payload["features"]["skill_condensation"], "permanent lease entitlements are wrong")
+    status, permanent_order = call(base, "POST", "/api/orders", {"contact": "permanent@example.test", "payment_provider": "alipay", "plan": "permanent"})
+    check(status == 201 and permanent_order["order"]["amount_cents"] == 4990 and permanent_order["order"]["plan"] == "permanent", "permanent order price is wrong")
+    tests += 1
+
+    status, created = call(base, "POST", "/api/orders", {"contact": "worker-test@example.test", "payment_provider": "alipay", "plan": "experience"})
+    check(status == 201 and created["order"]["status"] == "payment_pending" and created["order"]["amount_cents"] == 990, "experience order creation failed")
     token = created["status_token"]
     order_id = created["order"]["id"]
     order_headers = {"X-Order-Token": token}
@@ -96,8 +113,26 @@ def main() -> int:
         "device_public_key": device["public_key"],
     })
     check(status == 200 and activated["status"] == "active", f"activation failed: {activated}")
-    public_record = json.loads((MCP_DIR / "lease_public_key.json").read_text())
-    verify_lease(activated["lease"], public_record, install_id=install_id, product_id="lab-factory-1")
+    activation_payload = verify_lease(activated["lease"], public_record, install_id=install_id, product_id="lab-factory-1")
+    check(activation_payload["plan"] == "experience" and activation_payload["usage_limit"] == 3 and not activation_payload["features"]["skill_condensation"], "experience lease entitlements are wrong")
+    tests += 1
+
+    for index in range(1, 4):
+        usage_proof = {"action": "consume_usage", "activation_token": activated["activation_token"], "install_id": install_id, "timestamp": utc_now(), "nonce": "worker-usage-" + uuid.uuid4().hex, "usage_id": f"report:{index}"}
+        status, usage = call(base, "POST", "/api/usage/consume", {
+            "activation_token": activated["activation_token"], "proof": usage_proof, "signature": sign_device_message(device, usage_proof),
+        })
+        check(status == 200 and usage["charged"] and usage["usage_count"] == index, f"usage {index} was not charged")
+    repeated_proof = {"action": "consume_usage", "activation_token": activated["activation_token"], "install_id": install_id, "timestamp": utc_now(), "nonce": "worker-usage-repeat-" + uuid.uuid4().hex, "usage_id": "report:1"}
+    status, repeated_usage = call(base, "POST", "/api/usage/consume", {
+        "activation_token": activated["activation_token"], "proof": repeated_proof, "signature": sign_device_message(device, repeated_proof),
+    })
+    check(status == 200 and not repeated_usage["charged"] and repeated_usage["remaining_uses"] == 0, "usage retry was not idempotent")
+    fourth_proof = {"action": "consume_usage", "activation_token": activated["activation_token"], "install_id": install_id, "timestamp": utc_now(), "nonce": "worker-usage-fourth-" + uuid.uuid4().hex, "usage_id": "report:4"}
+    status, fourth = call(base, "POST", "/api/usage/consume", {
+        "activation_token": activated["activation_token"], "proof": fourth_proof, "signature": sign_device_message(device, fourth_proof),
+    })
+    check(status == 403 and fourth["error"]["code"] == "USAGE_LIMIT_REACHED", "fourth experience use was not blocked")
     tests += 1
 
     refund_proof = {"action": "refund_request", "activation_token": activated["activation_token"], "install_id": install_id, "timestamp": utc_now(), "nonce": "worker-refund-guidance-" + uuid.uuid4().hex}
