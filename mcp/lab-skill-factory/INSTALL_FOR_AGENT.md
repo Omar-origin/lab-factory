@@ -3,9 +3,9 @@
 安装 MCP 配置：
 
 ```bash
-lab-factory install --target both --purchase-url "https://lab.alan.elyther.top/buy" \
+lab-factory install --target both --purchase-url "https://lab.elyther.top/plans" \
   --support-email "QQ群923937311" --feedback-email "QQ群923937311" \
-  --control-url https://lab.alan.elyther.top
+  --control-url https://lab.elyther.top
 ```
 
 公开授权域名由销售者提供；不要索要数据库、管理员 Token 或任何私钥。随后帮助用户运行：

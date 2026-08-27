@@ -59,6 +59,20 @@
         <p id="emptyOrders" class="empty" hidden>当前筛选条件下没有订单。</p>
       </section>
 
+      <section class="ledger order-ledger">
+        <div class="ledger-head">
+          <div><span class="section-code">PAYOUTS / 02</span><h2>人工提现</h2></div>
+          <button id="refreshWithdrawals" type="button">刷新</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>申请</th><th>账号</th><th>金额</th><th>收款说明</th><th>状态</th><th>操作</th></tr></thead>
+            <tbody id="withdrawalRows"></tbody>
+          </table>
+        </div>
+        <p id="emptyWithdrawals" class="empty" hidden>暂无提现申请。</p>
+      </section>
+
       <section class="workspace">
         <aside class="create-panel">
           <span class="section-code">ISSUE / 01</span>

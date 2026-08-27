@@ -4,7 +4,7 @@ Lab Factory 是面向课程实验报告工作流的本地 MCP 工具与 Skill Fa
 
 ## 官网
 
-产品介绍、购买与订单查询：<https://lab.alan.elyther.top/buy>
+产品介绍、购买与订单查询：<https://lab.elyther.top/plans>
 
 ## 项目内容
 
@@ -35,10 +35,10 @@ python3 mcp/lab-skill-factory/scripts/run_autopilot_tests.py
 
 ```bash
 lab-factory install --target both \
-  --purchase-url "https://lab.alan.elyther.top/buy" \
+  --purchase-url "https://lab.elyther.top/plans" \
   --support-email "QQ群923937311" \
   --feedback-email "QQ群923937311" \
-  --control-url "https://lab.alan.elyther.top"
+  --control-url "https://lab.elyther.top"
 ```
 
 ## 文档

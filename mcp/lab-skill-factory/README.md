@@ -1,6 +1,6 @@
 # Lab Factory MCP
 
-Lab Factory 1.x 是面向课程实验报告工作流的本地 MCP 工具。当前商业主线采用轻量密钥中控：一个密钥绑定一个安装，通过 24 小时签名租约支持退款和违规封禁；报告处理仍完全在本地。
+Lab Factory 1.x 是面向课程实验报告工作流的本地 MCP 工具。当前商业主线采用邮箱账号与轻量密钥中控：一把密钥绑定一个安装，通过 24 小时签名租约支持退款和违规封禁；报告处理仍完全在本地。
 
 ## v2.1 报告自动驾驶
 
@@ -24,9 +24,13 @@ Lab Factory 1.x 是面向课程实验报告工作流的本地 MCP 工具。当�
 
 ## 当前商业授权
 
-- 同一个 Windows/macOS 安装包支持两种密钥：9.9 元体验版可创建 3 个报告会话且不能凝练/更新 Skill；49.9 元永久版不限报告次数并解锁 Skill 凝练。
+- 同一个 Windows/macOS 安装包支持三种套餐：9.9 元体验版可创建 3 个报告会话且不能凝练/更新 Skill；49.9 元当前大版本永久版不限报告次数并解锁 Skill 凝练；199 元五人共享版交付 5 把独立密钥并包含后续大版本更新。
+- 账号有效购买体验版后可享一次新用户升级优惠：永久版与五人共享版同时显示减 9.9 元，实际购买其中任一档后优惠消耗并恢复原价。优惠资格、订单锁定和最终消耗均由服务端校验。
 - 体验版额度按服务端的稳定报告 ID 幂等记账，重试不重复扣次，重装不会恢复额度；因此创建新的体验版报告时必须能连接授权中控。
-- 用户从独立 `/buy` 页面创建订单，通过支付宝经营码付款；GitHub 只提供购买链接和发行说明。
+- 用户在 `/register` 设置密码并用邮箱验证码完成注册，之后在 `/login` 使用邮箱与密码登录，再从 `/plans` 创建订单；GitHub 只提供购买链接和发行说明。
+- 邀请关系在邮箱首次注册时绑定；注册页支持手填或链接预填邀请码，邀请人可查看脱敏受邀账号。受邀账号的每笔有效实付订单按 20% 生成佣金，退款期后可申请人工提现或转成购买余额。
+- 管理员采用账号角色：完全管理员可管理角色、特殊邀请码、全站密钥、订单、提现和经营分析；分销管理员仅查看和处理自己邀请渠道内的数据。原管理员 Token 只保留为应急入口。
+- 完全管理员可在密钥中控直接生成体验版、永久版或五人共享版密钥；五人版一次返回 5 把独立密钥，明文仅显示一次。
 - 首发暂只开放支付宝经营码，售后与激活协助QQ群为 `923937311`。
 - 用户提交交易号/备注和付款时间，你在商户记录中人工核款，不接收付款截图。
 - 你在中控核对到账后点击一次“确认到账并自动发货”；系统原子生成密钥，用户凭订单 Token 在订单页直接领取。
@@ -42,7 +46,7 @@ Lab Factory 1.x 是面向课程实验报告工作流的本地 MCP 工具。当�
 
 ## 密钥中控快速开始
 
-完整部署见 [在线密钥中控与 24 小时租约](docs/REMOTE_AUTH_DEPLOYMENT.md) 和 [Cloudflare 商业中控部署](docs/CLOUDFLARE_COMMERCIAL_DEPLOYMENT.md)。正式购买页为 `https://lab.alan.elyther.top/buy`，卖家中控为 `https://lab.alan.elyther.top/admin`。支付配置与运营步骤见 [购买页、人工核款与退款运营](docs/COMMERCIAL_PURCHASE.md)。
+完整部署见 [在线密钥中控与 24 小时租约](docs/REMOTE_AUTH_DEPLOYMENT.md) 和 [Cloudflare 商业中控部署](docs/CLOUDFLARE_COMMERCIAL_DEPLOYMENT.md)。正式购买页为 `https://lab.elyther.top/plans`，账号管理员中控为 `https://lab.elyther.top/control/overview`，应急 Token 中控为 `https://lab.elyther.top/admin`。支付配置与运营步骤见 [购买页、人工核款与退款运营](docs/COMMERCIAL_PURCHASE.md)。
 
 ```bash
 python3 mcp/lab-skill-factory/auth/license_control_admin.py keys create \
@@ -82,9 +86,9 @@ python3 mcp/lab-skill-factory/auth/commercial_admin.py issue-license \
 ## 用户使用
 
 ```bash
-lab-factory install --target both --purchase-url "https://lab.alan.elyther.top/buy" \
+lab-factory install --target both --purchase-url "https://lab.elyther.top/plans" \
   --support-email "QQ群923937311" --feedback-email "QQ群923937311" \
-  --control-url https://lab.alan.elyther.top
+  --control-url https://lab.elyther.top
 lab-factory activate-key 'LF-XXXX-...' --accept-terms-version 1.0 --confirm-age-18
 lab-factory request-refund
 lab-factory telemetry enable

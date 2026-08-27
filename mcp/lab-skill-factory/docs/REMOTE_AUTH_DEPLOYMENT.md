@@ -55,14 +55,14 @@ python3 mcp/lab-skill-factory/auth/license_control_service.py
 
 生产环境必须放在 HTTPS 反向代理后面，并为激活、刷新和管理接口配置限流。不要直接把 stdlib HTTP 端口暴露到公网。
 
-卖家网页中控位于 `https://lab.alan.elyther.top/admin`。页面要求手动输入管理员 Token，Token 只保存在当前页面内存，刷新后清除。
+卖家网页中控位于 `https://lab.elyther.top/admin`。页面要求手动输入管理员 Token，Token 只保存在当前页面内存，刷新后清除。
 
-公开购买页位于 `https://lab.alan.elyther.top/buy`。生产环境应分别为订单创建、查询和付款提交设置限流；旧版退款接口继续限流并统一拒绝自助申请。订单 Token 只通过 `X-Order-Token` 请求头传递。
+公开购买页位于 `https://lab.elyther.top/plans`。生产环境应分别为订单创建、查询和付款提交设置限流；旧版退款接口继续限流并统一拒绝自助申请。订单 Token 只通过 `X-Order-Token` 请求头传递。
 
 ## 卖家操作
 
 ```bash
-export LAB_CONTROL_API_URL="https://lab.alan.elyther.top"
+export LAB_CONTROL_API_URL="https://lab.elyther.top"
 export LAB_CONTROL_ADMIN_TOKEN="<管理员Token>"
 
 python3 mcp/lab-skill-factory/auth/license_control_admin.py keys create \
@@ -81,8 +81,8 @@ python3 mcp/lab-skill-factory/auth/license_control_admin.py keys reset-binding l
 
 ```bash
 lab-factory install --target both \
-  --control-url "https://lab.alan.elyther.top" \
-  --purchase-url "https://lab.alan.elyther.top/buy" \
+  --control-url "https://lab.elyther.top" \
+  --purchase-url "https://lab.elyther.top/plans" \
   --support-email "QQ群923937311"
 
 lab-factory activate-key 'LF-XXXX-...' \

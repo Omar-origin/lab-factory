@@ -358,7 +358,7 @@ def consume_usage(usage_id: str) -> dict[str, Any]:
         lease, embedded_lease_public_key(), install_id=install_id(), product_id=PRODUCT_ID,
     )
     if payload.get("plan") != PLAN_EXPERIENCE:
-        return {"ok": True, "plan": PLAN_PERMANENT, "charged": False, "remaining_uses": None}
+        return {"ok": True, "plan": payload.get("plan", PLAN_PERMANENT), "charged": False, "remaining_uses": None}
     url = control_url(credential)
     if not url:
         raise OnlineControlError("experience usage requires the authorization service", code="CONTROL_URL_MISSING")

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>密钥管理 · Lab Factory</title>
+  <link rel="stylesheet" href="/assets/portal.css">
+  <link rel="stylesheet" href="/control/control.css">
+</head>
+<body data-control-page="keys">
+  <div class="control-layout">
+    <aside id="controlRail" class="control-rail"></aside>
+    <main class="control-main">
+      <header class="control-head"><div><p class="eyebrow">CONTROL / LICENSES</p><h1>密钥管理</h1><p>直接生成套餐密钥，或按套餐、状态与密钥信息查询已有授权。所有生成和状态操作都会留下审计记录。</p></div></header>
+      <section id="directIssuePanel" class="card direct-issue-panel" hidden>
+        <div class="direct-issue-copy"><p class="eyebrow">DIRECT ISSUE</p><h2>直接生成套餐密钥</h2><p>体验版和永久版各生成 1 把；五人共享版一次生成 5 把彼此独立的密钥。明文只显示这一次。</p></div>
+        <form id="directKeyForm" class="direct-issue-form">
+          <label class="field"><span>套餐</span><select name="plan"><option value="experience">9.9 体验版 · 1 把</option><option value="permanent" selected>49.9 永久版 · 1 把</option><option value="team">199 五人共享版 · 5 把</option></select></label>
+          <label class="field"><span>备注</span><input name="label" maxlength="120" placeholder="例如：线下成交 / 用户称呼"></label>
+          <label class="field"><span>客户参考号 <small>选填</small></span><input name="customer_ref" maxlength="100" placeholder="便于日后查找，不要填写密钥"></label>
+          <label class="field"><span>售后期限</span><select name="refund_days"><option value="7">7 天</option><option value="3">3 天</option></select></label>
+          <button id="directKeyButton" class="button primary full">生成套餐密钥</button>
+        </form>
+        <div id="issuedKeys" class="issued-key-batch" hidden><div><span>本批密钥 · 请立即保存</span><strong id="issuedPlanName"></strong></div><pre id="issuedKeyList"></pre><button id="copyIssuedKeys" class="button">复制全部密钥</button></div>
+      </section>
+      <form id="keyFilters" class="control-toolbar card card-pad"><input id="keySearch" placeholder="搜索密钥、订单、账号或备注"><select id="planFilter"><option value="">全部套餐</option><option value="experience">9.9 体验版</option><option value="permanent">49.9 永久版</option><option value="team">199 五人共享版</option></select><select id="statusFilter"><option value="">全部状态</option><option value="unused">未使用</option><option value="active">使用中</option><option value="exhausted">已耗尽</option><option value="banned">已封禁</option><option value="refunded">已退款</option></select><button class="button primary">查询</button></form>
+      <div class="table-wrap" style="margin-top:18px"><table class="data-table"><thead><tr><th>密钥</th><th>套餐</th><th>状态</th><th>用量</th><th>绑定设备</th><th>最后活动</th><th>操作</th></tr></thead><tbody id="keyRows"></tbody></table></div>
+    </main>
+  </div>
+  <div id="toast" class="toast"></div>
+  <script src="/assets/portal.js"></script><script src="/control/control.js"></script>
+</body>
+</html>

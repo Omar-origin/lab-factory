@@ -3,7 +3,7 @@
 安装后运行：
 
 ```powershell
-lab-factory install --target both --purchase-url "https://lab.alan.elyther.top/buy" --support-email "QQ群923937311" --feedback-email "QQ群923937311" --control-url https://lab.alan.elyther.top
+lab-factory install --target both --purchase-url "https://lab.elyther.top/plans" --support-email "QQ群923937311" --feedback-email "QQ群923937311" --control-url https://lab.elyther.top
 lab-factory license-request --output device.lfreq
 lab-factory activate device.lflicense --accept-terms-version 1.0 --confirm-age-18
 ```

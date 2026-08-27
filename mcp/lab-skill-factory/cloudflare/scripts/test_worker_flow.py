@@ -53,7 +53,7 @@ def main() -> int:
     status, config = call(base, "GET", "/api/checkout/config")
     check(status == 200 and [item["id"] for item in config["payment_providers"] if item["available"]] == ["alipay"], "checkout providers are wrong")
     check(config["support_contact"] == "售后QQ群：923937311", "support contact is wrong")
-    check([(item["id"], item["amount_cents"]) for item in config["plans"]] == [("experience", 990), ("permanent", 4990)], "license plans or prices are wrong")
+    check([(item["id"], item["amount_cents"]) for item in config["plans"]] == [("experience", 990), ("permanent", 4990), ("team", 19900)], "license plans or prices are wrong")
     tests += 1
     status, qr = call(base, "GET", "/payment-assets/alipay.png")
     check(status == 200 and isinstance(qr, bytes) and len(qr) > 1000, "Alipay QR asset failed")
@@ -61,7 +61,7 @@ def main() -> int:
     status, admin_script = call(base, "GET", "/admin/control.js")
     check(status == 200 and isinstance(admin_script, bytes) and b"confirm-and-deliver" in admin_script and b"plan" in admin_script, "admin static assets or plan selector were blocked")
     status, purchase_page = call(base, "GET", "/buy/index.html")
-    check(status == 200 and isinstance(purchase_page, bytes) and "49.9 永久版".encode() in purchase_page and b"planChoices" in purchase_page, "purchase page does not expose both plans")
+    check(status == 200 and isinstance(purchase_page, bytes) and "选择适合你的使用方式".encode() in purchase_page and b"/plans/plans.js" in purchase_page, "legacy purchase route did not reach the multi-plan page")
     tests += 1
     status, unauthenticated = call(base, "GET", "/admin/orders")
     check(status == 401 and unauthenticated["error"]["code"] == "ADMIN_AUTH_REQUIRED", "admin API was exposed without authentication")

@@ -4,6 +4,7 @@ let lastIssuedKey = "";
 const $ = (selector) => document.querySelector(selector);
 const stateLabels = {unused:"未使用",active:"使用中",refund_requested:"申请退款",refunded:"已退款",banned:"已封禁"};
 const orderLabels = {payment_pending:"等待付款",payment_submitted:"等待核款",payment_rejected:"付款未通过",paid:"已付款",key_issued:"已签发",delivered:"已交付",refund_requested:"申请退款",refunded:"已退款"};
+const withdrawalLabels = {pending:"待人工处理",paid:"已打款",rejected:"已驳回"};
 
 function toast(message){const node=$("#toast");node.textContent=message;node.classList.add("visible");setTimeout(()=>node.classList.remove("visible"),2600)}
 async function api(path, options={}){
@@ -56,6 +57,12 @@ async function loadOrders(){
     actions.append(group);tr.append(actions);rows.append(tr);
   });
 }
+async function loadWithdrawals(){
+  const body=await api("/admin/withdrawals?limit=500"),rows=$("#withdrawalRows");rows.replaceChildren();$("#emptyWithdrawals").hidden=body.withdrawals.length!==0;
+  body.withdrawals.forEach(item=>{const tr=document.createElement("tr");tr.append(textCell(item.id.replace("lfwithdraw_","").slice(0,10)),textCell(item.email),textCell(`¥${(item.amount_cents/100).toFixed(2)}`),textCell(item.payout_note));const status=document.createElement("td"),badge=document.createElement("span");badge.className=`badge ${item.status}`;badge.textContent=withdrawalLabels[item.status]||item.status;status.append(badge);tr.append(status);const actions=document.createElement("td"),group=document.createElement("div");group.className="row-actions";if(item.status==="pending"){group.append(withdrawalButton("确认已打款","paid",item),withdrawalButton("驳回","reject",item))}actions.append(group);tr.append(actions);rows.append(tr)})
+}
+function withdrawalButton(label,action,item){const button=document.createElement("button");button.type="button";button.textContent=label;button.addEventListener("click",()=>runWithdrawalAction(action,item));return button}
+async function runWithdrawalAction(action,item){try{if(!confirm(`确认${action==="paid"?"已经完成打款":"驳回"} ¥${(item.amount_cents/100).toFixed(2)}？`))return;const note=prompt("填写处理备注：","")??"";await api(`/admin/withdrawals/${item.id}/${action}`,{method:"POST",body:JSON.stringify({note})});toast(action==="paid"?"已记录打款":"申请已驳回，佣金已退回可用余额");await loadWithdrawals()}catch(error){toast(error.message)}}
 function orderActionButton(label,action,order){const button=document.createElement("button");button.type="button";button.textContent=label;button.addEventListener("click",()=>runOrderAction(action,order));return button}
 async function runOrderAction(action,order){
   try{
@@ -85,11 +92,11 @@ async function runAction(action,key){
 }
 function showDetail(key){
   $("#detailTitle").textContent=`密钥 •••• ${key.key_suffix}`;const fields=$("#detailFields");fields.replaceChildren();
-  [["状态",stateLabels[key.status]||key.status],["授权版本",key.plan==="experience"?"9.9 体验版":"49.9 永久版"],["使用上限",key.usage_limit==null?"无限":String(key.usage_limit)+" 次"],["密钥 ID",key.id],["备注",key.label],["订单引用",key.customer_ref],["安装 ID",key.install_id],["激活时间",key.activated_at],["退款截止",key.refund_deadline],["最后活动",key.last_seen_at],["封禁原因",key.revoke_reason]].forEach(([name,value])=>{const dt=document.createElement("dt"),dd=document.createElement("dd");dt.textContent=name;dd.textContent=value||"—";fields.append(dt,dd)});
+  [["状态",stateLabels[key.status]||key.status],["授权版本",({experience:"9.9 体验版",permanent:"49.9 永久版",team:"199 五人共享版"})[key.plan]||key.plan],["使用上限",key.usage_limit==null?"无限":String(key.usage_limit)+" 次"],["密钥 ID",key.id],["备注",key.label],["订单引用",key.customer_ref],["安装 ID",key.install_id],["激活时间",key.activated_at],["退款截止",key.refund_deadline],["最后活动",key.last_seen_at],["封禁原因",key.revoke_reason]].forEach(([name,value])=>{const dt=document.createElement("dt"),dd=document.createElement("dd");dt.textContent=name;dd.textContent=value||"—";fields.append(dt,dd)});
   const audit=$("#auditList");audit.replaceChildren();(key.audit_events||[]).forEach(event=>{const li=document.createElement("li");li.textContent=`${event.event} · ${event.actor}${event.reason?` · ${event.reason}`:""}`;const time=document.createElement("time");time.textContent=event.created_at;li.append(time);audit.append(li)});$("#detailDialog").showModal();
 }
 
-$("#loginForm").addEventListener("submit",async event=>{event.preventDefault();adminToken=$("#adminToken").value;try{await Promise.all([loadKeys(),loadOrders()]);$("#adminToken").value="";$("#loginPanel").hidden=true;$("#controlPanel").hidden=false;$(".signal").classList.add("online");$("#connectionState").textContent="已连接"}catch(error){adminToken="";toast(error.message)}});
+$("#loginForm").addEventListener("submit",async event=>{event.preventDefault();adminToken=$("#adminToken").value;try{await Promise.all([loadKeys(),loadOrders(),loadWithdrawals()]);$("#adminToken").value="";$("#loginPanel").hidden=true;$("#controlPanel").hidden=false;$(".signal").classList.add("online");$("#connectionState").textContent="已连接"}catch(error){adminToken="";toast(error.message)}});
 $("#createForm").addEventListener("submit",async event=>{event.preventDefault();const data=new FormData(event.currentTarget);try{const body=await api("/admin/keys",{method:"POST",body:JSON.stringify({label:data.get("label"),customer_ref:data.get("customer_ref"),refund_days:Number(data.get("refund_days")),plan:data.get("plan")})});lastCreated=body;$("#newKeyValue").textContent=body.activation_key;$("#newKeyPanel").hidden=false;event.currentTarget.reset();await loadKeys()}catch(error){toast(error.message)}});
 $("#copyKey").addEventListener("click",async()=>{if(!lastCreated)return;await navigator.clipboard.writeText(lastCreated.activation_key);toast("密钥已复制，请通过私密渠道发送")});
 $("#markSent").addEventListener("click",async()=>{if(!lastCreated)return;try{await api(`/admin/keys/${lastCreated.key.id}/mark-sent`,{method:"POST",body:"{}"});toast("已记录发送时间");await loadKeys()}catch(error){toast(error.message)}});
@@ -97,4 +104,5 @@ $("#refreshList").addEventListener("click",()=>loadKeys().catch(error=>toast(err
 $("#statusFilter").addEventListener("change",()=>loadKeys().catch(error=>toast(error.message)));
 $("#refreshOrders").addEventListener("click",()=>loadOrders().catch(error=>toast(error.message)));
 $("#orderStatusFilter").addEventListener("change",()=>loadOrders().catch(error=>toast(error.message)));
+$("#refreshWithdrawals").addEventListener("click",()=>loadWithdrawals().catch(error=>toast(error.message)));
 $("#copyIssuedKey").addEventListener("click",async()=>{if(!lastIssuedKey)return;try{await navigator.clipboard.writeText(lastIssuedKey);toast("密钥已复制")}catch{toast("复制失败，请手动复制")}});

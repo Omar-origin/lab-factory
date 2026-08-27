@@ -5,7 +5,7 @@
   "compatibility_date": "2026-08-23",
   "workers_dev": true,
   "routes": [
-    { "pattern": "lab.alan.elyther.top", "custom_domain": true }
+    { "pattern": "lab.elyther.top", "custom_domain": true }
   ],
   "assets": {
     "directory": "./public",
@@ -26,8 +26,15 @@
     "PRODUCT_ID": "lab-factory-1",
     "PRICE_CENTS": "990",
     "PERMANENT_PRICE_CENTS": "4990",
+    "TEAM_PRICE_CENTS": "19900",
+    "MAJOR_UPGRADE_PRICE_CENTS": "2000",
+    "CURRENT_MAJOR_VERSION": "1",
     "REFUND_DAYS": "7",
     "SUPPORT_CONTACT": "售后QQ群：923937311",
-    "LEASE_KEY_ID": "lfleasepk_baf99d3b6ee0b6be"
+    "LEASE_KEY_ID": "lfleasepk_baf99d3b6ee0b6be",
+    "APP_ORIGIN": "https://lab.elyther.top",
+    "BREVO_SENDER_EMAIL": "no-reply@mail.elyther.top",
+    "BREVO_SENDER_NAME": "Lab Factory",
+    "TURNSTILE_SITE_KEY": "0x4AAAAAAEc-j44SBiT_u2n_"
   }
 }

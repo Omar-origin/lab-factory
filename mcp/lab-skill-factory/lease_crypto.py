@@ -25,7 +25,8 @@ DEFAULT_LEASE_HOURS = 24
 DEFAULT_REFRESH_HOURS = 6
 PLAN_EXPERIENCE = "experience"
 PLAN_PERMANENT = "permanent"
-VALID_PLANS = {PLAN_EXPERIENCE, PLAN_PERMANENT}
+PLAN_TEAM = "team"
+VALID_PLANS = {PLAN_EXPERIENCE, PLAN_PERMANENT, PLAN_TEAM}
 
 
 def utc_now() -> str:
@@ -148,7 +149,7 @@ def issue_lease(
         raise ValueError("unsupported license plan")
     if plan == PLAN_EXPERIENCE and usage_limit != 3:
         raise ValueError("experience licenses must have exactly three uses")
-    if plan == PLAN_PERMANENT:
+    if plan in {PLAN_PERMANENT, PLAN_TEAM}:
         usage_limit = None
     if usage_count < 0 or (usage_limit is not None and usage_count > usage_limit):
         raise ValueError("invalid usage counters")
@@ -169,7 +170,7 @@ def issue_lease(
         "plan": plan,
         "usage_limit": usage_limit,
         "usage_count": usage_count,
-        "features": {"skill_condensation": plan == PLAN_PERMANENT},
+        "features": {"skill_condensation": plan in {PLAN_PERMANENT, PLAN_TEAM}},
     }
     return {"payload": payload, "signature": b64encode(private_key.sign(canonical_json(payload)))}
 
