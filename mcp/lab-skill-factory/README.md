@@ -40,7 +40,8 @@ Lab Factory 1.x 是面向课程实验报告工作流的本地 MCP 工具。当�
 - 授权准确表述为“绑定一个安装”，不读取用户名、机器名或硬件指纹，也不处理共享电脑和完整克隆。
 - 使用数据默认不记录；用户同意后仅在本机记录白名单字段，主动导出后自行发邮件。
 - 更新包由你人工发送，用户先核对 SHA-256，再按说明安装。
-- 草稿/终稿固定追加一次 AI 辅助生成声明，无法安全追加时阻止 Finalize。
+- 冻结发行包采用运行时文件白名单，不再携带完整工厂 `SKILL.md`、整套 references、eval 或开发测试；外部脚本执行、外部 Skill 根目录和外部 vendor 覆盖均被拒绝。每次构建都会运行发布安全回归。
+- 草稿/终稿固定在正文最上方放置一次醒目的 AI 辅助生成声明，无法安全放置时阻止 Finalize。
 
 原有 `.lfreq` / `.lflicense` 离线流程保留为兼容入口，但无法远程封禁，不再作为新商业密钥的默认流程。
 
@@ -109,5 +110,7 @@ python3 mcp/lab-skill-factory/scripts/test_online_license_control.py
 ```
 
 源码开发可临时设置 `LAB_FACTORY_DEV_ALLOW=1`；冻结发行包忽略该变量。
+
+面向用户分发的构建必须启用签名门禁：macOS 使用 `RELEASE_BUILD=1 CODESIGN_IDENTITY=...`，Windows 使用 `-ReleaseBuild -CodeSigningThumbprint ...`。未提供签名身份时，发布模式会直接失败；普通本地开发构建仍允许使用临时签名。客户端加固范围、验证方法和剩余边界见 [客户端加固说明](docs/CLIENT_HARDENING.md)。
 
 详细说明见 [在线密钥中控](docs/REMOTE_AUTH_DEPLOYMENT.md)、[离线兼容授权](docs/OFFLINE_LICENSING.md)、[用户指南](USER_GUIDE.md) 和 [跨平台说明](docs/WINDOWS_MAC_USAGE.md)。

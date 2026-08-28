@@ -109,7 +109,7 @@ def file_sha256(path: Path) -> str:
 
 
 def ensure_docx_disclaimer(path: Path) -> dict[str, Any]:
-    """Append the fixed disclosure once, without changing any source document."""
+    """Place one visible disclosure at the start, without changing any source document."""
     fd, temporary_name = tempfile.mkstemp(prefix=".lab-factory-disclaimer-", suffix=".docx", dir=str(path.parent))
     os.close(fd)
     temporary = Path(temporary_name)
@@ -121,27 +121,35 @@ def ensure_docx_disclaimer(path: Path) -> dict[str, Any]:
                     root = etree.fromstring(raw)
                     body_matches = root.xpath("/w:document/w:body", namespaces=NS)
                     if len(body_matches) != 1:
-                        raise V2Error("DOCX has no unique word/document.xml body; disclaimer cannot be appended safely")
+                        raise V2Error("DOCX has no unique word/document.xml body; disclaimer cannot be placed safely")
                     body = body_matches[0]
                     matches = [
                         paragraph for paragraph in body.xpath(".//w:p", namespaces=NS)
                         if element_text(paragraph) == DISCLAIMER_TEXT
                     ]
-                    for duplicate in matches[1:]:
-                        parent = duplicate.getparent()
+                    for existing in matches:
+                        parent = existing.getparent()
                         if parent is not None:
-                            parent.remove(duplicate)
-                    if not matches:
-                        paragraph = etree.Element(W + "p")
-                        run = etree.SubElement(paragraph, W + "r")
-                        text_node = etree.SubElement(run, W + "t")
-                        text_node.set(XML_SPACE, "preserve")
-                        text_node.text = DISCLAIMER_TEXT
-                        section_properties = body.find(W + "sectPr")
-                        if section_properties is None:
-                            body.append(paragraph)
-                        else:
-                            body.insert(body.index(section_properties), paragraph)
+                            parent.remove(existing)
+                    paragraph = etree.Element(W + "p")
+                    paragraph_properties = etree.SubElement(paragraph, W + "pPr")
+                    spacing = etree.SubElement(paragraph_properties, W + "spacing")
+                    spacing.set(W + "after", "120")
+                    alignment = etree.SubElement(paragraph_properties, W + "jc")
+                    alignment.set(W + "val", "center")
+                    run = etree.SubElement(paragraph, W + "r")
+                    run_properties = etree.SubElement(run, W + "rPr")
+                    etree.SubElement(run_properties, W + "b")
+                    color = etree.SubElement(run_properties, W + "color")
+                    color.set(W + "val", "C00000")
+                    size = etree.SubElement(run_properties, W + "sz")
+                    size.set(W + "val", "20")
+                    size_complex = etree.SubElement(run_properties, W + "szCs")
+                    size_complex.set(W + "val", "20")
+                    text_node = etree.SubElement(run, W + "t")
+                    text_node.set(XML_SPACE, "preserve")
+                    text_node.text = DISCLAIMER_TEXT
+                    body.insert(0, paragraph)
                     raw = etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
                 destination.writestr(info, raw)
         os.replace(temporary, path)
@@ -150,13 +158,19 @@ def ensure_docx_disclaimer(path: Path) -> dict[str, Any]:
             temporary.unlink()
     with zipfile.ZipFile(path) as package:
         root = etree.fromstring(package.read("word/document.xml"))
-    count = sum(
-        1 for paragraph in root.xpath("/w:document/w:body//w:p", namespaces=NS)
-        if element_text(paragraph) == DISCLAIMER_TEXT
-    )
+    body = root.xpath("/w:document/w:body", namespaces=NS)[0]
+    count = sum(1 for paragraph in body.xpath(".//w:p", namespaces=NS) if element_text(paragraph) == DISCLAIMER_TEXT)
     if count != 1:
         raise V2Error(f"Disclaimer verification failed: expected 1 paragraph, found {count}")
-    return {"ok": True, "document": str(path), "disclaimer_count": count}
+    first_child = body[0] if len(body) else None
+    if first_child is None or first_child.tag != W + "p" or element_text(first_child) != DISCLAIMER_TEXT:
+        raise V2Error("Disclaimer verification failed: disclosure is not the first document paragraph")
+    return {
+        "ok": True,
+        "document": str(path),
+        "disclaimer_count": count,
+        "disclaimer_position": "document_start",
+    }
 
 
 def normalize_text(value: str) -> str:

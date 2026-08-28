@@ -87,6 +87,15 @@ def docx_text(path: Path) -> str:
     return "\n".join(parts)
 
 
+def disclaimer_is_first(path: Path, format_name: str) -> bool:
+    if format_name == "docx":
+        from docx import Document
+
+        paragraphs = Document(str(path)).paragraphs
+        return bool(paragraphs) and paragraphs[0].text.strip().startswith("AI 辅助生成声明：")
+    return path.read_text(encoding="utf-8").lstrip().startswith("> **AI 辅助生成声明：")
+
+
 def run_sample(sample: dict, workspace: Path) -> dict:
     sample_dir = workspace / sample["id"]
     sample_dir.mkdir(parents=True)
@@ -144,13 +153,15 @@ def run_sample(sample: dict, workspace: Path) -> dict:
     if output.exists():
         text = docx_text(output) if sample["format"] == "docx" else output.read_text(encoding="utf-8")
         contains = sample["content"] in text
+    disclosure_first = output.exists() and disclaimer_is_first(output, sample["format"])
     return {
         "id": sample["id"],
-        "ok": proc.returncode == 0 and output.exists() and contains and sha256(target) == source_hash,
+        "ok": proc.returncode == 0 and output.exists() and contains and disclosure_first and sha256(target) == source_hash,
         "returncode": proc.returncode,
         "source_unchanged": sha256(target) == source_hash,
         "output_exists": output.exists(),
         "content_found": contains,
+        "disclaimer_first": disclosure_first,
         "stdout": proc.stdout.strip(),
         "stderr": proc.stderr.strip(),
     }

@@ -164,8 +164,12 @@ def apply_markdown(output_path: Path, items: list[dict[str, Any]], contents: dic
             operations.append({"id": item_id, "operation": operation, "anchor": anchor, "status": "applied"})
         else:
             raise FillError(f"{item_id}: unsupported operation for Markdown: {operation}")
-    if DISCLAIMER_TEXT not in text:
-        text = text.rstrip() + "\n\n---\n\n> " + DISCLAIMER_TEXT + "\n"
+    previous_footer = "\n\n---\n\n> " + DISCLAIMER_TEXT
+    text = text.replace(previous_footer, "")
+    text = text.replace("> **" + DISCLAIMER_TEXT + "**", "")
+    text = text.replace("> " + DISCLAIMER_TEXT, "")
+    text = "> **" + DISCLAIMER_TEXT + "**\n\n---\n\n" + text.lstrip()
+    text = text.rstrip() + "\n"
     output_path.write_text(text, encoding="utf-8")
     return operations
 
@@ -312,11 +316,21 @@ def apply_docx(output_path: Path, items: list[dict[str, Any]], contents: dict[st
         else:
             raise FillError(f"{item_id}: unsupported operation for DOCX: {operation}")
 
-    matching = [paragraph for paragraph in document.paragraphs if paragraph.text.strip() == DISCLAIMER_TEXT]
-    for duplicate in matching[1:]:
-        duplicate._element.getparent().remove(duplicate._element)
-    if not matching:
-        document.add_paragraph(DISCLAIMER_TEXT)
+    for paragraph in [item for item in document.paragraphs if item.text.strip() == DISCLAIMER_TEXT]:
+        paragraph._element.getparent().remove(paragraph._element)
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.shared import Pt, RGBColor
+
+    disclosure = document.add_paragraph()
+    disclosure.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    disclosure.paragraph_format.space_after = Pt(6)
+    run = disclosure.add_run(DISCLAIMER_TEXT)
+    run.bold = True
+    run.font.size = Pt(10)
+    run.font.color.rgb = RGBColor(192, 0, 0)
+    body = document._body._element
+    body.remove(disclosure._element)
+    body.insert(0, disclosure._element)
     document.save(str(output_path))
     return operations
 

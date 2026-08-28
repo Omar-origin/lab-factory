@@ -255,9 +255,23 @@ def run() -> dict:
         )
         output_inventory = ENGINE.inventory_docx(output)
         output_text = "\n".join(node["text"] for node in output_inventory["nodes"])
+        with zipfile.ZipFile(output) as archive:
+            output_root = ENGINE.etree.fromstring(archive.read("word/document.xml"))
+        output_body = output_root.xpath("/w:document/w:body", namespaces=ENGINE.NS)[0]
+        disclosure = output_body[0]
         results.append({"name": "source-unchanged", "ok": ENGINE.file_sha256(template) == source_hash})
         results.append({"name": "package-preservation", "ok": untouched and apply_result["changed_parts"] == ["word/document.xml"]})
         results.append({"name": "table-writeback", "ok": "程序运行成功" in output_text and "表格内安全写入" in output_text})
+        results.append({
+            "name": "disclaimer-visible-at-document-start",
+            "ok": (
+                ENGINE.element_text(disclosure) == ENGINE.DISCLAIMER_TEXT
+                and ENGINE.child_value(disclosure, "./w:pPr/w:jc") == "center"
+                and ENGINE.child_value(disclosure, ".//w:rPr/w:color") == "C00000"
+                and ENGINE.child_value(disclosure, ".//w:rPr/w:sz") == "20"
+                and bool(disclosure.xpath(".//w:rPr/w:b", namespaces=ENGINE.NS))
+            ),
+        })
 
         formatting_template = root / "formatting-template.docx"
         formatting_output = root / "formatting-output.docx"
