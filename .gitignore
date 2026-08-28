@@ -14,6 +14,8 @@ output/
 generated/
 workspace/
 *-workspace/
+generated_experiment6_mcp_test/
+generated_experiment6_mcp_test_v2_1/
 
 # Python/root build artifacts
 .venv/
@@ -40,4 +42,5 @@ mcp/lab-skill-factory/cloudflare/node_modules/
 mcp/lab-skill-factory/cloudflare/.wrangler/
 mcp/lab-skill-factory/cloudflare/.dev.vars*
 mcp/lab-skill-factory/build/pyinstaller-work/
+mcp/lab-skill-factory/build/release-runtime/
 mcp/lab-skill-factory/build/*.spec

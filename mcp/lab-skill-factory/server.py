@@ -10,14 +10,17 @@ remain in the skill package and its helper scripts.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import importlib.util
+import io
 import json
 import os
 import runpy
 import subprocess
 import sys
 import time
+import traceback
 import uuid
 from pathlib import Path
 from typing import Any
@@ -39,6 +42,16 @@ SERVER_DIR = Path(sys.executable).resolve().parent if FROZEN else Path(__file__)
 REPO_ROOT = SERVER_DIR.parents[1] if not FROZEN else SERVER_DIR
 DEFAULT_SKILL_ROOT = (BUNDLE_ROOT / "skills" / "lab-skill-factory") if FROZEN else (REPO_ROOT / "skills" / "lab-skill-factory")
 DEFAULT_VENDOR_DIR = SERVER_DIR / "vendor"
+RUNTIME_SKILL_SCRIPTS = frozenset({
+    "apply_fill_map.py",
+    "extract_docx_outline.py",
+    "inspect_lab_materials.py",
+    "scaffold_subject_skill.py",
+    "v2_engine.py",
+    "validate_fill_map.py",
+    "validate_scaffolded_skill.py",
+    "validate_skill_spec.py",
+})
 
 
 def configure_stdio() -> None:
@@ -54,6 +67,8 @@ configure_stdio()
 
 
 def vendor_dir() -> Path:
+    if FROZEN:
+        return (BUNDLE_ROOT / "vendor").resolve()
     return Path(os.environ.get("LAB_FACTORY_VENDOR_DIR", DEFAULT_VENDOR_DIR)).expanduser().resolve()
 
 
@@ -71,7 +86,14 @@ class ToolError(Exception):
 
 
 def skill_root() -> Path:
+    if FROZEN:
+        return DEFAULT_SKILL_ROOT.resolve()
     return Path(os.environ.get("LAB_FACTORY_SKILL_ROOT", DEFAULT_SKILL_ROOT)).expanduser().resolve()
+
+
+def runtime_script_path(script_name: str, root: Path | None = None) -> Path:
+    runtime_name = f"{script_name}c" if FROZEN else script_name
+    return (root or skill_root()) / "scripts" / runtime_name
 
 
 def product_id() -> str:
@@ -143,8 +165,14 @@ def run_skill_script(
     timeout: int = 90,
     ok_return_codes: tuple[int, ...] = (0,),
 ) -> dict[str, Any]:
+    # Defense in depth: helpers are product code, not a second unlicensed API.
+    # Every execution path must re-check the signed entitlement even when the
+    # caller already checked it at the MCP handler boundary.
+    require_activation()
+    if script_name not in RUNTIME_SKILL_SCRIPTS or Path(script_name).name != script_name:
+        raise ToolError(f"不允许执行未登记的运行时脚本：{script_name}", code="RUNTIME_SCRIPT_NOT_ALLOWED")
     root = skill_root()
-    script = root / "scripts" / script_name
+    script = runtime_script_path(script_name, root)
     if not root.exists():
         raise ToolError(f"找不到 lab-skill-factory skill 根目录：{root}")
     if not script.exists():
@@ -158,22 +186,44 @@ def run_skill_script(
             pythonpath_parts.append(env["PYTHONPATH"])
         env["PYTHONPATH"] = os.pathsep.join(pythonpath_parts)
 
-    command = [sys.executable, "--run-skill-script", str(script), *args] if FROZEN else [python_executable(), str(script), *args]
-    proc = subprocess.run(
-        command,
-        cwd=str(root),
-        env=env,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=timeout,
-        check=False,
-    )
-    stdout = proc.stdout.strip()
-    stderr = proc.stderr.strip()
-    if proc.returncode not in ok_return_codes:
-        message = f"{script_name} 执行失败，退出码 {proc.returncode}。"
+    if FROZEN:
+        # Run only the allowlisted bundled path in-process. Older builds exposed
+        # a generic --run-skill-script entrypoint that could execute any local
+        # Python file inside the frozen runtime.
+        stdout_buffer, stderr_buffer = io.StringIO(), io.StringIO()
+        original_argv, original_cwd = sys.argv[:], Path.cwd()
+        returncode = 0
+        try:
+            sys.argv = [str(script), *args]
+            os.chdir(root)
+            with contextlib.redirect_stdout(stdout_buffer), contextlib.redirect_stderr(stderr_buffer):
+                try:
+                    runpy.run_path(str(script), run_name="__main__")
+                except SystemExit as exc:
+                    returncode = int(exc.code or 0) if isinstance(exc.code, int) else 1
+                except Exception:
+                    traceback.print_exc()
+                    returncode = 1
+        finally:
+            sys.argv = original_argv
+            os.chdir(original_cwd)
+        stdout, stderr = stdout_buffer.getvalue().strip(), stderr_buffer.getvalue().strip()
+    else:
+        proc = subprocess.run(
+            [python_executable(), str(script), *args],
+            cwd=str(root),
+            env=env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+            check=False,
+        )
+        returncode = proc.returncode
+        stdout, stderr = proc.stdout.strip(), proc.stderr.strip()
+    if returncode not in ok_return_codes:
+        message = f"{script_name} 执行失败，退出码 {returncode}。"
         if stderr:
             message += f" stderr: {stderr[-1200:]}"
         if stdout:
@@ -188,8 +238,8 @@ def run_skill_script(
     if stderr:
         parsed = {"result": parsed, "stderr": stderr}
     if isinstance(parsed, dict):
-        parsed.setdefault("exit_code", proc.returncode)
-    return parsed if isinstance(parsed, dict) else {"result": parsed, "exit_code": proc.returncode}
+        parsed.setdefault("exit_code", returncode)
+    return parsed if isinstance(parsed, dict) else {"result": parsed, "exit_code": returncode}
 
 
 def tool_status(_: dict[str, Any]) -> dict[str, Any]:
@@ -210,7 +260,7 @@ def tool_status(_: dict[str, Any]) -> dict[str, Any]:
             "clients": ["Claude Code", "Codex", "any MCP client that supports stdio servers"],
             "note": "This server is not Codex-specific. Client differences are handled by config snippets.",
         },
-        "available_scripts": sorted(p.name for p in (root / "scripts").glob("*.py")) if root.exists() else [],
+        "available_scripts": sorted(name for name in RUNTIME_SKILL_SCRIPTS if runtime_script_path(name, root).exists()),
         "distribution_note": "Lab Factory 1.x 商业授权：一个密钥绑定一个安装，在线租约最长 24 小时；报告内容始终只在本地处理。",
         "custom_skill_visibility_recommendation": (
             "建议让定制出来的专属 skill 可见、可编辑，因为它是用户自己的规则沉淀；"
@@ -297,7 +347,7 @@ def client_command_args() -> tuple[str, list[str]]:
 def build_client_config(client: str) -> dict[str, Any]:
     command, args = client_command_args()
     env = {}
-    if not FROZEN or os.environ.get("LAB_FACTORY_SKILL_ROOT"):
+    if not FROZEN:
         env["LAB_FACTORY_SKILL_ROOT"] = str(skill_root())
     env["LAB_FACTORY_PRODUCT_ID"] = product_id()
     for key in ("LAB_FACTORY_PURCHASE_URL", "LAB_FACTORY_SUPPORT_EMAIL", "LAB_FACTORY_FEEDBACK_EMAIL"):
@@ -305,7 +355,7 @@ def build_client_config(client: str) -> dict[str, Any]:
             env[key] = os.environ[key]
     if os.environ.get("LAB_FACTORY_WORKSPACE_ROOT"):
         env["LAB_FACTORY_WORKSPACE_ROOT"] = str(workspace_root())
-    if os.environ.get("LAB_FACTORY_VENDOR_DIR"):
+    if not FROZEN and os.environ.get("LAB_FACTORY_VENDOR_DIR"):
         env["LAB_FACTORY_VENDOR_DIR"] = str(vendor_dir())
 
     if client == "claude_code":
@@ -1996,7 +2046,7 @@ def self_test() -> int:
         "scaffold_subject_skill.py",
         "v2_engine.py",
     ]:
-        if not (root / "scripts" / script).exists():
+        if not runtime_script_path(script, root).exists():
             missing.append(script)
     if missing:
         print(f"Missing scripts: {', '.join(missing)}", file=sys.stderr)
@@ -2007,14 +2057,7 @@ def self_test() -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run the Lab Skill Factory MCP server.")
     parser.add_argument("--self-test", action="store_true", help="Check local paths and print status without MCP framing.")
-    parser.add_argument("--run-skill-script", help=argparse.SUPPRESS)
-    parser.add_argument("script_args", nargs=argparse.REMAINDER, help=argparse.SUPPRESS)
     args = parser.parse_args()
-    if args.run_skill_script:
-        script = Path(args.run_skill_script).expanduser().resolve()
-        sys.argv = [str(script), *args.script_args]
-        runpy.run_path(str(script), run_name="__main__")
-        return 0
     if args.self_test:
         return self_test()
     return serve_stdio()

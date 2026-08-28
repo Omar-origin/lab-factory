@@ -10,7 +10,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import runpy
 import subprocess
 import sys
 from pathlib import Path
@@ -48,6 +47,9 @@ def call_tool(handler: Callable[[dict[str, Any]], dict[str, Any]], args: dict[st
 
 
 def run_install(args: argparse.Namespace) -> int:
+    if server.FROZEN and getattr(args, "skill_root", None):
+        print_json({"ok": False, "error": "release builds use the embedded runtime and do not accept --skill-root"})
+        return 2
     binary = args.binary or (sys.executable if server.FROZEN else None)
     command, command_args = installer.server_command(binary)
     requested_env = installer.env_map(args)
@@ -80,7 +82,10 @@ def run_install(args: argparse.Namespace) -> int:
 
 
 def run_beta_tests(_: argparse.Namespace) -> int:
-    script_root = server.BUNDLE_ROOT if server.FROZEN else server.SERVER_DIR
+    if server.FROZEN:
+        print_json({"ok": False, "error": "release builds do not contain development test scripts"})
+        return 2
+    script_root = server.SERVER_DIR
     scripts = [
         script_root / "scripts" / "run_beta_smoke_tests.py",
         script_root / "scripts" / "run_v2_tests.py",
@@ -96,19 +101,6 @@ def run_beta_tests(_: argparse.Namespace) -> int:
             }
         )
         return 1
-    if server.FROZEN:
-        for script in scripts:
-            original_argv = sys.argv[:]
-            try:
-                sys.argv = [str(script)]
-                runpy.run_path(str(script), run_name="__main__")
-            except SystemExit as exc:
-                code = int(exc.code or 0) if isinstance(exc.code, int) else 1
-                if code:
-                    return code
-            finally:
-                sys.argv = original_argv
-        return 0
     for script in scripts:
         proc = subprocess.run(
             [sys.executable, str(script)], text=True, encoding="utf-8", errors="replace", check=False,
@@ -184,26 +176,7 @@ def run_mcp_smoke(_: argparse.Namespace) -> int:
     return 0 if ok else 1
 
 
-def run_embedded_skill_script(argv: list[str]) -> int:
-    if len(argv) < 3:
-        print_json({"ok": False, "error": "--run-skill-script requires a script path"})
-        return 2
-    script = Path(argv[2]).expanduser().resolve()
-    original_argv = sys.argv[:]
-    try:
-        sys.argv = [str(script), *argv[3:]]
-        runpy.run_path(str(script), run_name="__main__")
-        return 0
-    except SystemExit as exc:
-        return int(exc.code or 0) if isinstance(exc.code, int) else 1
-    finally:
-        sys.argv = original_argv
-
-
 def main() -> int:
-    if len(sys.argv) > 1 and sys.argv[1] == "--run-skill-script":
-        return run_embedded_skill_script(sys.argv)
-
     parser = argparse.ArgumentParser(
         prog="lab-factory",
         description="Lab Skill Factory CLI: activation, installation, diagnostics, writeback, tests, and MCP serving.",
@@ -374,7 +347,8 @@ def main() -> int:
     validate_skill = sub.add_parser("validate-skill", help="Validate a generated user subject skill.")
     validate_skill.add_argument("skill_dir")
 
-    sub.add_parser("test", help="Run beta smoke tests.")
+    if not server.FROZEN:
+        sub.add_parser("test", help="Run beta smoke tests from a source checkout.")
 
     args = parser.parse_args()
 

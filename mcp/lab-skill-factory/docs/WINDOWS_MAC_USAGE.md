@@ -7,4 +7,4 @@ lab-factory install --target both --purchase-url "https://lab.elyther.top/plans"
 lab-factory activate-key '销售者提供的密钥' --accept-terms-version 1.0 --confirm-age-18
 ```
 
-macOS 未签名包可能被 Gatekeeper 阻止，Windows 未签名包可能出现 SmartScreen 提示。付款前应告知用户，并同时公布安装包 SHA-256。扩大销售前再完成平台签名和 macOS 公证。
+本地开发包可能使用临时签名；任何面向用户收费分发的版本必须使用 Developer ID/Authenticode 正式签名，macOS 还应完成公证，并同时公布安装包 SHA-256。构建脚本的发布模式会在缺少签名身份时直接失败。
