@@ -1,0 +1,18 @@
+test_audit_and_mutation_binding (__main__.NativeTests.test_audit_and_mutation_binding) ... ok
+test_balanced_native_end_to_end_and_changed_final (__main__.NativeTests.test_balanced_native_end_to_end_and_changed_final) ... ok
+test_fabricated_checks_rejected (__main__.NativeTests.test_fabricated_checks_rejected) ... ok
+test_image_hash_and_package (__main__.NativeTests.test_image_hash_and_package) ... ok
+test_invalid_native_matrix_rejected (__main__.NativeTests.test_invalid_native_matrix_rejected) ... ok
+test_invalid_prepare_does_not_consume (__main__.NativeTests.test_invalid_prepare_does_not_consume) ... ok
+test_missing_cross_reference_rejected_transactionally (__main__.NativeTests.test_missing_cross_reference_rejected_transactionally) ... ok
+test_native_table_and_preservation (__main__.NativeTests.test_native_table_and_preservation) ... ok
+test_native_table_in_template_cell (__main__.NativeTests.test_native_table_in_template_cell) ... ok
+test_pending_evidence_cannot_be_certified (__main__.NativeTests.test_pending_evidence_cannot_be_certified) ... ok
+test_same_template_and_table_do_not_count_as_authored_prose (__main__.NativeTests.test_same_template_and_table_do_not_count_as_authored_prose) ... ok
+test_structure_alone_is_notice (__main__.NativeTests.test_structure_alone_is_notice) ... ok
+test_usage_timeout_replays_same_report (__main__.NativeTests.test_usage_timeout_replays_same_report) ... ok
+
+----------------------------------------------------------------------
+Ran 13 tests in 1.022s
+
+OK

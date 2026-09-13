@@ -18,6 +18,7 @@ import re
 import secrets
 import shutil
 import statistics
+import sys
 import tempfile
 import uuid
 import zipfile
@@ -26,6 +27,9 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from lxml import etree
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import native_blocks
 
 
 NS = {
@@ -65,7 +69,7 @@ AI_PROSE_PATTERNS: dict[str, re.Pattern[str]] = {
     "generic_conclusion": re.compile(
         r"(?:未来(?:发展)?前景(?:十分)?广阔|迈出了重要一步|具有十分重要的意义|为后续.{0,20}奠定了基础)"
     ),
-    "chatbot_trace": re.compile(r"(?:希望这对你|希望这对您|如果您想|如果你想|请告诉我|当然[！!]|好问题[！!])"),
+    "chatbot_trace": re.compile(r"(?:本变体|本版本采用|为增强差异化|为了去AI化|希望这对你|希望这对您|如果您想|如果你想|请告诉我|当然[！!]|好问题[！!])"),
     "empty_emphasis": re.compile(r"(?:至关重要|深入探讨|值得注意的是|毋庸置疑|不难发现)"),
 }
 
@@ -1392,8 +1396,12 @@ def resolve_content_items(
 
 
 def apply_v2(
-    profile: dict[str, Any], target: Path, content: dict[str, Any], output: Path, overwrite: bool = False
+    profile: dict[str, Any], target: Path, content: dict[str, Any], output: Path, overwrite: bool = False, workspace: Path | None = None
 ) -> dict[str, Any]:
+    if workspace is not None and not output.resolve().is_relative_to(workspace.resolve()):
+        raise V2Error("Output must be inside workspace")
+    if str(content.get("version", "")) == "3.0":
+        return native_blocks.apply(__import__("types").SimpleNamespace(**globals()), profile, target, content, output, overwrite, workspace)
     if target.resolve() == output.resolve():
         raise V2Error("Output must not overwrite the source document")
     if output.exists() and not overwrite:
@@ -1961,15 +1969,22 @@ def ngrams(value: str, size: int = 5) -> set[str]:
     return {value[index : index + size] for index in range(max(0, len(value) - size + 1))}
 
 
+def comparison_text(path: Path) -> str:
+    if path.suffix.lower() != ".docx":
+        return extract_text(path)
+    native = native_blocks.native_inventory(path)
+    return "\n".join(native.get("authored_prose") or authored_paragraphs(path))
+
+
 def similarity_check(generated: Path, references: list[Path], whitelist: list[str]) -> dict[str, Any]:
-    generated_raw = extract_text(generated)
+    generated_raw = comparison_text(generated)
     for phrase in whitelist:
         generated_raw = generated_raw.replace(phrase, "")
     generated_compact = compact_text(generated_raw)
     generated_sentences = [compact_text(item) for item in sentence_units(generated_raw)]
     findings = []
     for reference in references:
-        reference_raw = extract_text(reference)
+        reference_raw = comparison_text(reference)
         for phrase in whitelist:
             reference_raw = reference_raw.replace(phrase, "")
         reference_compact = compact_text(reference_raw)
@@ -2118,9 +2133,14 @@ def document_structure_audit(path: Path) -> dict[str, Any]:
         }
         for match in numbered
     ]
+    native = native_blocks.native_inventory(resolved) if resolved.suffix.lower() == ".docx" else {"entries": []}
+    entries.extend(native["entries"])
     ids = [item["id"] for item in entries]
     duplicate_ids = sorted({item for item in ids if ids.count(item) > 1})
     prose_without_placeholders = GENERIC_EVIDENCE_PLACEHOLDER.sub("", full_text)
+    # Captions themselves do not constitute a prose cross-reference.
+    prose_without_placeholders = "\n".join(line for line in prose_without_placeholders.splitlines()
+        if not re.fullmatch(r"(?:图|表)\s*\d+(?:[-－.]\d+)*[：:\s]+.+", line.strip()))
     referenced_ids = {
         normalized_evidence_id(match.group(1), match.group(2))
         for match in FIGURE_OR_TABLE_REFERENCE.finditer(prose_without_placeholders)
@@ -2171,7 +2191,7 @@ def document_structure_audit(path: Path) -> dict[str, Any]:
     problem_has_numbered_figure = any(
         match.group(1) == "图" for match in NUMBERED_EVIDENCE_PLACEHOLDER.finditer(summary_text)
     )
-    problem_evidence_decision_recorded = problem_has_numbered_figure or not problem_evidence_needed
+    problem_evidence_decision_recorded = problem_has_numbered_figure or any(item["kind"] == "图" and item["id"] in referenced_ids for item in native["entries"]) or not problem_evidence_needed
 
     unresolved_template_cues = sorted({
         value[:160]
@@ -2215,6 +2235,8 @@ def document_structure_audit(path: Path) -> dict[str, Any]:
         "problem_evidence_decision_recorded": problem_evidence_decision_recorded,
         "unresolved_template_cues": unresolved_template_cues,
         "structure_fingerprint": fingerprint,
+        "pending_evidence_count": len(generic),
+        "native_evidence": native["entries"],
         "evidence_counts": {
             "numbered_figures": sum(item["kind"] == "图" for item in entries),
             "numbered_tables": sum(item["kind"] == "表" for item in entries),
@@ -2230,7 +2252,7 @@ def document_structure_audit(path: Path) -> dict[str, Any]:
 
 
 def cohort_similarity_check(generated: Path, comparisons: list[Path], whitelist: list[str]) -> dict[str, Any]:
-    generated_raw = extract_text(generated)
+    generated_raw = comparison_text(generated)
     for phrase in whitelist:
         generated_raw = generated_raw.replace(phrase, "")
     generated_compact = compact_text(generated_raw)
@@ -2239,7 +2261,7 @@ def cohort_similarity_check(generated: Path, comparisons: list[Path], whitelist:
     generated_structure = structure_fingerprint(generated)
     findings = []
     for comparison in comparisons:
-        comparison_raw = extract_text(comparison)
+        comparison_raw = comparison_text(comparison)
         for phrase in whitelist:
             comparison_raw = comparison_raw.replace(phrase, "")
         comparison_compact = compact_text(comparison_raw)
@@ -2264,7 +2286,7 @@ def cohort_similarity_check(generated: Path, comparisons: list[Path], whitelist:
             and flow_similarity >= 0.90
             and count_similarity >= 0.90
         )
-        blocked = longest.size >= 40 or sentence_hits >= 2 or overlap > 0.25 or structural_collision
+        blocked = longest.size >= 40 or sentence_hits >= 2 or overlap > 0.25
         findings.append({
             "comparison_id": "report_" + file_sha256(comparison)[:16],
             "blocked": blocked,
@@ -2276,6 +2298,7 @@ def cohort_similarity_check(generated: Path, comparisons: list[Path], whitelist:
             "structure_flow_similarity": flow_similarity,
             "structure_count_similarity": count_similarity,
             "structural_collision": structural_collision,
+            "structure_notice_only": structural_collision and not blocked,
         })
     blocked_findings = [item for item in findings if item["blocked"]]
     return {
@@ -2509,6 +2532,7 @@ def main() -> int:
     apply_parser.add_argument("content")
     apply_parser.add_argument("--output", required=True)
     apply_parser.add_argument("--overwrite", action="store_true")
+    apply_parser.add_argument("--workspace")
 
     disclaimer_parser = sub.add_parser("ensure-disclaimer")
     disclaimer_parser.add_argument("docx")
@@ -2624,7 +2648,7 @@ def main() -> int:
         elif args.command == "apply":
             result = apply_v2(
                 load_json(Path(args.profile)), Path(args.docx).resolve(), load_json(Path(args.content)),
-                Path(args.output).resolve(), args.overwrite,
+                Path(args.output).resolve(), args.overwrite, Path(args.workspace).resolve() if args.workspace else None,
             )
         elif args.command == "ensure-disclaimer":
             result = ensure_docx_disclaimer(Path(args.docx).expanduser().resolve())

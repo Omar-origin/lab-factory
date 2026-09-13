@@ -153,12 +153,20 @@ def run() -> dict:
             "name": "low-risk-flow-awaits-host-artifacts",
             "ok": running["next_action"] == "await_host_artifact" and running["session"]["orchestration_state"] == "running",
         })
+        draft_path = workspace / 'draft.docx'
+        from docx import Document
+        document = Document(); document.add_paragraph('本地状态机测试文档'); document.save(draft_path)
+        receipt = AUTOPILOT.artifact_store.register(workspace, draft_path)
+        # Isolate orchestration from the engine; integration tests exercise the actual audit tool.
+        AUTOPILOT.artifact_store.certify(workspace, receipt, {
+            'status': 'pass', 'humanization': {'status': 'pass'},
+            'diversity': quality_evidence()['diversity_report']})
         final_preview = AUTOPILOT.advance(
             workspace, running["session"]["state_version"], key(), None,
             {
                 "placement": {"score": 0.96, "margin": 0.22},
                 "content_package_ready": True,
-                "draft": {"object_id": "docx-final-v1", "sha256": "a" * 64, "wps_review_checklist": ["分页", "行距"]},
+                "draft": receipt,
                 **quality_evidence(),
             },
         )

@@ -281,3 +281,6 @@ input:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px
   .auth-story { display: none; }
   .auth-panel { min-height: 100vh; }
 }
+
+.mobile-checkout{display:none} .docs-content section{scroll-margin-top:100px;margin-bottom:36px} .docs-content pre{white-space:pre-wrap;overflow-wrap:anywhere} .docs-content blockquote{margin:16px 0;padding:18px;border-left:3px solid var(--accent,#bddf87);background:#ffffff08} .case-card .action-row{flex-wrap:wrap}
+@media(max-width:760px){.mobile-checkout{display:flex;position:sticky;bottom:16px;z-index:10;grid-row:2;box-shadow:0 6px 30px #0008} .checkout-card{scroll-margin-top:88px}}

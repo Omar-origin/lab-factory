@@ -1,3 +1,5 @@
+> 新客户端原生图表与最终质量证据以 [native-media-v3.md](native-media-v3.md) 为准。最终交付必须调用本地 verify_draft，不能自行填写通过证据。
+
 # Lab Factory v2 Workflow
 
 ## 0. 默认使用 v2.1 报告自动驾驶

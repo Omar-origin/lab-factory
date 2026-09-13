@@ -1,0 +1,82 @@
+{
+  "version": "3.0",
+  "chapter": "1",
+  "assets": {
+    "website": {
+      "relative_path": "public-docs-screenshot.png",
+      "sha256": "05f796777849e3305c919c2db78dee85f963a40d5571091346b5a983e84a2814"
+    }
+  },
+  "items": [
+    {
+      "field_id": "body",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "id": "intro",
+          "segments": [
+            {
+              "text": "演示对象及其编辑方式列于"
+            },
+            {
+              "ref": "features"
+            },
+            {
+              "text": "。这些内容用于检查文件结构。"
+            }
+          ]
+        },
+        {
+          "type": "table",
+          "id": "features",
+          "caption_id": "features",
+          "caption": "演示对象说明",
+          "columns": [
+            "对象",
+            "保存方式",
+            "检查方式"
+          ],
+          "rows": [
+            [
+              "截图",
+              "DOCX 内嵌图片",
+              "点击图片并检查比例"
+            ],
+            [
+              "三线表",
+              "Word 原生表格",
+              "修改单元格并保存"
+            ],
+            [
+              "图表编号",
+              "正文引用与题注",
+              "检查编号对应关系"
+            ]
+          ]
+        },
+        {
+          "type": "paragraph",
+          "id": "image_intro",
+          "segments": [
+            {
+              "text": "审查时截取的官网文档页面见"
+            },
+            {
+              "ref": "website"
+            },
+            {
+              "text": "。该图片仅作为插图演示，不用于证明任何实验已完成。"
+            }
+          ]
+        },
+        {
+          "type": "figure",
+          "id": "website",
+          "asset_id": "website",
+          "caption_id": "website",
+          "caption": "官网文档页截图（演示材料）"
+        }
+      ]
+    }
+  ]
+}

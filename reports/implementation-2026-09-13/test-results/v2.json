@@ -1,0 +1,160 @@
+{
+  "ok": true,
+  "count": 38,
+  "failed": [],
+  "results": [
+    {
+      "name": "inventory-stories",
+      "ok": true
+    },
+    {
+      "name": "inventory-table-coordinate",
+      "ok": true
+    },
+    {
+      "name": "alternate-content-deduplicated",
+      "ok": true
+    },
+    {
+      "name": "unsupported-template-cue-manual-only",
+      "ok": true
+    },
+    {
+      "name": "placements-auto",
+      "ok": true
+    },
+    {
+      "name": "family-compatible-after-content-growth",
+      "ok": true
+    },
+    {
+      "name": "profile-drift-history",
+      "ok": true
+    },
+    {
+      "name": "container-conflict-blocked",
+      "ok": true
+    },
+    {
+      "name": "unrelated-family-rejected",
+      "ok": true
+    },
+    {
+      "name": "source-unchanged",
+      "ok": true
+    },
+    {
+      "name": "package-preservation",
+      "ok": true
+    },
+    {
+      "name": "table-writeback",
+      "ok": true
+    },
+    {
+      "name": "disclaimer-visible-at-document-start",
+      "ok": true
+    },
+    {
+      "name": "docx-semantic-golden",
+      "ok": true
+    },
+    {
+      "name": "placeholder-color-normalized",
+      "ok": true
+    },
+    {
+      "name": "insert-after-uses-body-style",
+      "ok": true
+    },
+    {
+      "name": "remaining-template-cues-audited",
+      "ok": true
+    },
+    {
+      "name": "mutation-targets-pre-resolved",
+      "ok": true
+    },
+    {
+      "name": "content-quality-gate",
+      "ok": true
+    },
+    {
+      "name": "inventory-heading-tree",
+      "ok": true
+    },
+    {
+      "name": "controlled-section-expansion",
+      "ok": true
+    },
+    {
+      "name": "section-style-level-mismatch-blocked",
+      "ok": true
+    },
+    {
+      "name": "session-state-machine",
+      "ok": true
+    },
+    {
+      "name": "optional-section-state-transition",
+      "ok": true
+    },
+    {
+      "name": "writing-profile",
+      "ok": true
+    },
+    {
+      "name": "similarity-block",
+      "ok": true
+    },
+    {
+      "name": "prior-report-analysis-extracts-profile-without-body-or-path",
+      "ok": true
+    },
+    {
+      "name": "humanization-audit-uses-clusters-and-keeps-detectors-out-of-gate",
+      "ok": true
+    },
+    {
+      "name": "cohort-collision-gate-is-private-and-distinguishes-clear-output",
+      "ok": true
+    },
+    {
+      "name": "document-structure-audit-enforces-numbered-single-placeholders-and-table-decision",
+      "ok": true
+    },
+    {
+      "name": "problem-solution-screenshot-placeholder-is-required-only-when-helpful",
+      "ok": true
+    },
+    {
+      "name": "cohort-gate-blocks-same-structure-even-when-topics-differ",
+      "ok": true
+    },
+    {
+      "name": "v1-migration",
+      "ok": true
+    },
+    {
+      "name": "skill-quality-scaffold-and-validate",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "unconfirmed-spec-blocked",
+      "ok": true
+    },
+    {
+      "name": "mcp-controlled-section-expansion",
+      "ok": true
+    },
+    {
+      "name": "mcp-v2-workflow",
+      "ok": true
+    },
+    {
+      "name": "skill-update-privacy-gate",
+      "ok": true
+    }
+  ]
+}

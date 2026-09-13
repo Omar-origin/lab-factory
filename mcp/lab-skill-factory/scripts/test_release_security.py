@@ -19,16 +19,19 @@ RUNTIME_FILES = {
     "skills/lab-skill-factory/scripts/inspect_lab_materials.pyc",
     "skills/lab-skill-factory/scripts/scaffold_subject_skill.pyc",
     "skills/lab-skill-factory/scripts/v2_engine.pyc",
+    "skills/lab-skill-factory/scripts/native_blocks.pyc",
     "skills/lab-skill-factory/scripts/validate_fill_map.pyc",
     "skills/lab-skill-factory/scripts/validate_scaffolded_skill.pyc",
     "skills/lab-skill-factory/scripts/validate_skill_spec.pyc",
     "skills/lab-skill-factory/assets/content-package-v2.schema.json",
+    "skills/lab-skill-factory/assets/content-package-v3.schema.json",
     "skills/lab-skill-factory/assets/requirements-summary-v2.schema.json",
     "skills/lab-skill-factory/assets/section-plan-v2.schema.json",
     "skills/lab-skill-factory/assets/style-card-v2.schema.json",
     "skills/lab-skill-factory/assets/template-profile-v2.schema.json",
     "skills/lab-skill-factory/assets/writing-profile-v2.schema.json",
     "skills/lab-skill-factory/references/v2-workflow.md",
+    "skills/lab-skill-factory/references/native-media-v3.md",
 }
 
 

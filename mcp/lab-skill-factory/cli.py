@@ -41,7 +41,7 @@ def call_tool(handler: Callable[[dict[str, Any]], dict[str, Any]], args: dict[st
         result = handler(args)
         print_json(result)
         return 0 if result.get("ok", True) is not False else 1
-    except server.ToolError as exc:
+    except (server.ToolError, server.artifact_store.ArtifactError, ValueError, OSError) as exc:
         print_json({"ok": False, "error": str(exc)})
         return 1
 
@@ -90,6 +90,7 @@ def run_beta_tests(_: argparse.Namespace) -> int:
         script_root / "scripts" / "run_beta_smoke_tests.py",
         script_root / "scripts" / "run_v2_tests.py",
         script_root / "scripts" / "run_autopilot_tests.py",
+        script_root / "scripts" / "run_native_tests.py",
     ]
     missing = [str(script) for script in scripts if not script.exists()]
     if missing:
@@ -183,6 +184,9 @@ def main() -> int:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
+    bridge = sub.add_parser("tool", help="Call an MCP tool using a UTF-8 JSON argument file.")
+    bridge.add_argument("name", choices=sorted(server.TOOLS))
+    bridge.add_argument("--args-file", required=True)
     sub.add_parser("serve-mcp", help="Run the stdio MCP server.")
     sub.add_parser("status", help="Show activation and runtime status.")
     sub.add_parser("check-runtime", help="Check bundled/runtime Python dependencies.")
@@ -217,7 +221,7 @@ def main() -> int:
     verify_update.add_argument("--sha256", required=True)
 
     export_config = sub.add_parser("export-config", help="Export MCP client config.")
-    export_config.add_argument("--client", choices=["claude_code", "codex", "generic_stdio"], default="generic_stdio")
+    export_config.add_argument("--client", choices=["claude_code", "codex", "generic_stdio", "workbuddy", "kimi"], default="generic_stdio")
 
     install = sub.add_parser("install", help="Install MCP config for Claude Code and/or Codex.")
     install.add_argument("--target", choices=["claude", "codex", "both"], default="both")
@@ -352,6 +356,10 @@ def main() -> int:
 
     args = parser.parse_args()
 
+    if args.command == "tool":
+        payload = json.loads(Path(args.args_file).read_text(encoding="utf-8"))
+        if not isinstance(payload, dict): raise ValueError("Tool arguments must be a JSON object")
+        return call_tool(server.TOOLS[args.name]["handler"], payload)
     if args.command == "serve-mcp":
         return server.serve_stdio()
     if args.command == "status":

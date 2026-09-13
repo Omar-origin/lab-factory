@@ -1,0 +1,132 @@
+{
+  "writeback": {
+    "ok": true,
+    "version": "3.0",
+    "source_sha256": "1dfb647d972e9832126ba13139ae52bce520234f6297216f1944bde2488a638f",
+    "output_document": "/Users/omar/Documents/New project/reports/implementation-2026-09-13/demo/native-report.docx",
+    "output_sha256": "2e1ece11bfc77579d06105000f5d589e36f7da883b85c77ef6a0360694714c25",
+    "changed_parts": [
+      "[Content_Types].xml",
+      "word/_rels/document.xml.rels",
+      "word/document.xml"
+    ],
+    "added_parts": [
+      "word/media/lf_05f796777849e3305c919c2db78dee85f963a40d5571091346b5a983e84a2814.jpg"
+    ],
+    "assets": [
+      {
+        "asset_id": "website",
+        "sha256": "05f796777849e3305c919c2db78dee85f963a40d5571091346b5a983e84a2814",
+        "media_part": "word/media/lf_05f796777849e3305c919c2db78dee85f963a40d5571091346b5a983e84a2814.jpg"
+      }
+    ],
+    "blocks": [
+      {
+        "block_id": "features",
+        "kind": "table",
+        "caption_id": "features",
+        "label": "表 1-1"
+      },
+      {
+        "block_id": "website",
+        "kind": "figure",
+        "caption_id": "website",
+        "label": "图 1-1"
+      }
+    ],
+    "wps_review_required": true,
+    "native_objects": {
+      "entries": [
+        {
+          "kind": "表",
+          "id": "表1-1",
+          "title": "演示对象说明"
+        },
+        {
+          "kind": "图",
+          "id": "图1-1",
+          "title": "官网文档页截图（演示材料）"
+        }
+      ],
+      "table_count": 1,
+      "image_count": 1,
+      "authored_paragraphs": [
+        "演示对象及其编辑方式列于表 1-1。这些内容用于检查文件结构。",
+        "表 1-1 演示对象说明",
+        "对象",
+        "保存方式",
+        "检查方式",
+        "截图",
+        "DOCX 内嵌图片",
+        "点击图片并检查比例",
+        "三线表",
+        "Word 原生表格",
+        "修改单元格并保存",
+        "图表编号",
+        "正文引用与题注",
+        "检查编号对应关系",
+        "审查时截取的官网文档页面见图 1-1。该图片仅作为插图演示，不用于证明任何实验已完成。",
+        "图 1-1 官网文档页截图（演示材料）"
+      ],
+      "authored_prose": [
+        "演示对象及其编辑方式列于表 1-1。这些内容用于检查文件结构。",
+        "审查时截取的官网文档页面见图 1-1。该图片仅作为插图演示，不用于证明任何实验已完成。"
+      ]
+    }
+  },
+  "structure": {
+    "version": "1.0",
+    "status": "pass",
+    "caption_cross_reference_ok": true,
+    "single_asset_per_placeholder_ok": true,
+    "table_decision_recorded": true,
+    "problem_evidence_decision_recorded": true,
+    "unresolved_template_cues": [],
+    "structure_fingerprint": {
+      "eligible": false,
+      "block_count": 5,
+      "flow_signature": [
+        "prose_short",
+        "prose_short",
+        "prose_short",
+        "prose_short",
+        "prose_short"
+      ],
+      "counts": {
+        "prose_short": 5,
+        "prose_medium": 0,
+        "prose_long": 0,
+        "list_item": 0,
+        "problem_solution": 0,
+        "numbered_figure": 0,
+        "numbered_table": 0,
+        "unnumbered_evidence": 0
+      },
+      "summary_shape": "narrative"
+    },
+    "pending_evidence_count": 0,
+    "native_evidence": [
+      {
+        "kind": "表",
+        "id": "表1-1",
+        "title": "演示对象说明"
+      },
+      {
+        "kind": "图",
+        "id": "图1-1",
+        "title": "官网文档页截图（演示材料）"
+      }
+    ],
+    "evidence_counts": {
+      "numbered_figures": 1,
+      "numbered_tables": 1,
+      "unnumbered_placeholders": 0
+    },
+    "missing_cross_references": [],
+    "duplicate_ids": [],
+    "multi_asset_placeholders": [],
+    "table_required_by_content": false,
+    "problem_evidence_needed": false,
+    "failures": []
+  }
+}

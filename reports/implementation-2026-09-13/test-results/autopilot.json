@@ -1,0 +1,79 @@
+{
+  "ok": true,
+  "count": 18,
+  "failed": [],
+  "results": [
+    {
+      "name": "cold-start-assigns-capsule-without-blocking-preference-form",
+      "ok": true
+    },
+    {
+      "name": "format-defaults-and-sources-disclosed",
+      "ok": true
+    },
+    {
+      "name": "state-persists-object-ids-not-source-paths",
+      "ok": true
+    },
+    {
+      "name": "preflight-is-first-routine-checkpoint",
+      "ok": true
+    },
+    {
+      "name": "idempotent-confirmation-replays-token",
+      "ok": true
+    },
+    {
+      "name": "stale-state-rejected",
+      "ok": true
+    },
+    {
+      "name": "low-risk-flow-awaits-host-artifacts",
+      "ok": true
+    },
+    {
+      "name": "final-docx-is-second-routine-checkpoint",
+      "ok": true
+    },
+    {
+      "name": "normal-balanced-flow-has-exactly-two-checkpoints",
+      "ok": true
+    },
+    {
+      "name": "writer-genome-and-generation-contract-control-semantic-and-style-axes",
+      "ok": true
+    },
+    {
+      "name": "per-report-seed-varies-observable-layout-not-only-wording",
+      "ok": true
+    },
+    {
+      "name": "capsule-is-stable-per-installation-and-different-across-installations",
+      "ok": true
+    },
+    {
+      "name": "cold-start-genome-distribution-has-no-axis-collision-across-128-identities",
+      "ok": true
+    },
+    {
+      "name": "prior-report-profile-is-optional-private-and-takes-precedence",
+      "ok": true
+    },
+    {
+      "name": "low-style-confidence-triggers-two-sample-calibration",
+      "ok": true
+    },
+    {
+      "name": "low-confidence-placement-asks-user",
+      "ok": true
+    },
+    {
+      "name": "fast-mode-reserved-but-disabled",
+      "ok": true
+    },
+    {
+      "name": "legacy-session-remains-strict",
+      "ok": true
+    }
+  ]
+}

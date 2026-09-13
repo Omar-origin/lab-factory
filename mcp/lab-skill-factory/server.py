@@ -30,6 +30,7 @@ if str(MODULE_DIR) not in sys.path:
     sys.path.insert(0, str(MODULE_DIR))
 import commercial_client
 import autopilot
+import artifact_store
 
 
 SERVER_NAME = "lab-factory-mcp"
@@ -386,6 +387,9 @@ def build_client_config(client: str) -> dict[str, Any]:
             "config": toml,
             "note": "Use this in Codex's MCP server configuration.",
         }
+    if client in {"workbuddy", "kimi"}:
+        return {"format": "json", "config": {"mcpServers": {"lab-factory": {"command": command, "args": args, "env": env}}},
+                "note": "Local stdio MCP configuration; import into the host and verify tool discovery. Desktop and model capabilities are independent."}
     if client == "generic_stdio":
         return {
             "format": "json",
@@ -398,7 +402,7 @@ def build_client_config(client: str) -> dict[str, Any]:
             },
             "note": "Generic stdio MCP shape for clients that do not use mcpServers JSON.",
         }
-    raise ToolError("client 只能是 claude_code、codex 或 generic_stdio。")
+    raise ToolError("client 只能是 claude_code、codex、generic_stdio、workbuddy 或 kimi。")
 
 
 def tool_export_client_config(args: dict[str, Any]) -> dict[str, Any]:
@@ -657,6 +661,22 @@ def run_autopilot(function: Any, *args: Any, **kwargs: Any) -> dict[str, Any]:
         raise ToolError(str(exc), code=exc.code, details=exc.details) from exc
 
 
+def acknowledge_report_usage(workspace: str | Path, report_id: str) -> dict[str, Any]:
+    """Durable retry intent; the server's report key remains the idempotency authority."""
+    root = Path(resolve_user_path(str(workspace)))
+    receipt = root / 'lab-factory' / 'usage' / (hashlib.sha256(report_id.encode()).hexdigest() + '.json')
+    intent = {'report_id': report_id, 'status': 'pending'}
+    artifact_store.write(receipt, intent)
+    try:
+        usage = consume_report_use(report_id)
+    except Exception:
+        # A timeout may mean charged remotely. Retry the same report key, never allocate a new one.
+        artifact_store.write(receipt, dict(intent, status='retry_required'))
+        raise
+    artifact_store.write(receipt, dict(intent, status='acknowledged'))
+    return usage
+
+
 def tool_v2_prepare_autopilot(args: dict[str, Any]) -> dict[str, Any]:
     require_activation()
     raw_key = require_string(args, "idempotency_key")
@@ -664,11 +684,12 @@ def tool_v2_prepare_autopilot(args: dict[str, Any]) -> dict[str, Any]:
         report_uuid = uuid.UUID(raw_key).hex
     except ValueError as exc:
         raise ToolError("idempotency_key 必须是 UUID。", code="IDEMPOTENCY_KEY_INVALID") from exc
-    usage = consume_report_use(report_uuid)
     mode = args.get("mode", "balanced")
+    require_string(args, "workspace")
+    require_string(args, "subject")
     if mode == "strict":
         workspace = require_string(args, "workspace")
-        strict_report_id = "strict_" + report_uuid[:12]
+        strict_report_id = "report_" + report_uuid
         legacy_state_path = Path(resolve_user_path(workspace)) / "lab-factory" / "session-state.json"
         if legacy_state_path.exists():
             existing = v2_session_status(workspace)
@@ -681,6 +702,7 @@ def tool_v2_prepare_autopilot(args: dict[str, Any]) -> dict[str, Any]:
                 "create-session", resolve_user_path(workspace),
                 "--subject", require_string(args, "subject"), "--report-id", strict_report_id,
             ])
+        usage = acknowledge_report_usage(workspace, strict_report_id)
         return {
             "ok": True, "mode": "strict", "legacy_session": legacy.get("session"),
             "next_action": "ask_user", "reason_code": "STRICT_REQUIREMENTS_CONFIRMATION",
@@ -707,7 +729,7 @@ def tool_v2_prepare_autopilot(args: dict[str, Any]) -> dict[str, Any]:
         Path(resolve_user_path(personal_profile)) if isinstance(personal_profile, str) and personal_profile.strip() else None,
         style_identity,
     )
-    result["license_usage"] = usage
+    result["license_usage"] = acknowledge_report_usage(require_string(args, "workspace"), result["session"]["report_id"])
     return result
 
 
@@ -790,6 +812,8 @@ def tool_v2_advance_autopilot(args: dict[str, Any]) -> dict[str, Any]:
     artifacts = args.get("artifacts", {})
     if not isinstance(artifacts, dict):
         raise ToolError("artifacts 必须是对象。")
+    usage_state = autopilot.read_state(Path(resolve_user_path(require_string(args, "workspace"))))
+    acknowledge_report_usage(require_string(args, "workspace"), usage_state["report_id"])
     token = args.get("confirmation_token")
     return run_autopilot(
         autopilot.advance,
@@ -818,6 +842,7 @@ def require_v2_state(workspace: str, expected: set[str]) -> dict[str, Any]:
     state = ((result.get("session") or {}).get("state"))
     if state not in expected:
         raise ToolError(f"当前 v2 会话状态为 {state}，此操作要求状态为：{', '.join(sorted(expected))}。")
+    acknowledge_report_usage(workspace, result["session"]["report_id"])
     return result
 
 
@@ -917,14 +942,13 @@ def tool_v2_create_session(args: dict[str, Any]) -> dict[str, Any]:
         report_id = "report_" + uuid.uuid4().hex
     else:
         report_id = report_id.strip()
-    usage = consume_report_use(report_id)
     command = [
         "create-session", resolve_user_path(require_string(args, "workspace")),
         "--subject", require_string(args, "subject"),
     ]
     command.extend(["--report-id", report_id])
     result = run_v2(command)
-    result["license_usage"] = usage
+    result["license_usage"] = acknowledge_report_usage(require_string(args, "workspace"), report_id)
     return result
 
 
@@ -1005,16 +1029,20 @@ def tool_v2_apply_draft(args: dict[str, Any]) -> dict[str, Any]:
     report_id = str((session_status.get("session") or {}).get("report_id") or "").strip()
     if not report_id:
         raise ToolError("v2 会话缺少 report_id，无法确认使用额度。", code="USAGE_CHECK_FAILED")
-    usage = consume_report_use(report_id)
+    usage = acknowledge_report_usage(workspace, report_id)
     command = [
         "apply", resolve_user_path(require_string(args, "profile_path")),
         resolve_user_path(require_string(args, "docx_path")),
         resolve_user_path(require_string(args, "content_package_path")),
         "--output", resolve_user_path(require_string(args, "output_path")),
+        "--workspace", resolve_user_path(workspace),
     ]
     if args.get("overwrite") is True:
         command.append("--overwrite")
     result = run_v2(command, timeout=180)
+    registered = artifact_store.register(Path(resolve_user_path(workspace)), Path(resolve_user_path(require_string(args, "output_path"))))
+    artifact_store.write(Path(resolve_user_path(workspace)) / "lab-factory" / "strict-draft.json", registered)
+    result["draft"] = registered
     transition = run_v2(["advance-session", resolve_user_path(workspace), "--event", "record_draft"])
     result["session"] = transition.get("session")
     result["license_usage"] = usage
@@ -1029,6 +1057,10 @@ def tool_v2_review_draft(args: dict[str, Any]) -> dict[str, Any]:
     decision = require_string(args, "decision")
     if decision not in {"approve", "revise"}:
         raise ToolError("decision 只能是 approve 或 revise。")
+    if decision == "approve":
+        root = Path(resolve_user_path(workspace))
+        receipt = json.loads((root / "lab-factory" / "strict-draft.json").read_text())
+        artifact_store.verify(root, receipt["object_id"], receipt["sha256"], require_audit=True)
     event = "approve_draft" if decision == "approve" else "revise_draft"
     return run_v2(
         [
@@ -1043,31 +1075,14 @@ def tool_v2_finalize(args: dict[str, Any]) -> dict[str, Any]:
     require_activation()
     workspace = require_string(args, "workspace")
     require_v2_state(workspace, {"draft_reviewed"})
-    command = ["similarity", resolve_user_path(require_string(args, "generated_path"))]
-    references = args.get("reference_paths", [])
-    if not isinstance(references, list) or not all(isinstance(item, str) for item in references):
-        raise ToolError("reference_paths 必须是字符串数组。")
-    command.extend(resolve_user_path(item) for item in references)
-    if not references:
-        # argparse requires one reference; no reference means the anti-copy gate has no comparison surface.
-        similarity = {"ok": True, "gate": "pass", "findings": [], "note": "No reference samples supplied."}
-    else:
-        whitelist = args.get("whitelist", [])
-        if not isinstance(whitelist, list) or not all(isinstance(item, str) for item in whitelist):
-            raise ToolError("whitelist 必须是字符串数组。")
-        command.extend(["--whitelist-json", json.dumps(whitelist, ensure_ascii=False)])
-        similarity = run_v2(command, allow_validation_failure=True)
-    if not similarity.get("ok"):
-        raise ToolError(f"相似性门禁阻止 finalize：{similarity.get('findings')}")
-    structure_audit = run_v2(
-        ["document-structure-audit", resolve_user_path(require_string(args, "generated_path"))],
-        allow_validation_failure=True,
-    )
-    if structure_audit.get("status") != "pass":
-        raise ToolError(f"结构与图表门禁阻止 finalize：{structure_audit.get('failures')}")
-    disclaimer = run_v2(["ensure-disclaimer", resolve_user_path(require_string(args, "generated_path"))])
-    if disclaimer.get("disclaimer_count") != 1:
-        raise ToolError("AI 辅助生成声明无法安全写入，Finalize 已阻止。")
+    root = Path(resolve_user_path(workspace))
+    receipt = json.loads((root / "lab-factory" / "strict-draft.json").read_text())
+    record = artifact_store.verify(root, receipt["object_id"], receipt["sha256"], require_audit=True)
+    if (root / record['relative_path']).resolve() != Path(resolve_user_path(require_string(args, 'generated_path'))).resolve():
+        raise ToolError('最终文件与用户审阅文件不同。')
+    similarity = record['audit']['diversity']
+    structure_audit = record['audit']['structure']
+    disclaimer = {'disclaimer_at_start': record['audit']['disclosure_at_start'], 'modified': False}
     transition = run_v2(
         [
             "advance-session", resolve_user_path(workspace), "--event", "finalize",
@@ -1298,7 +1313,310 @@ def tool_get_factory_guidance(args: dict[str, Any]) -> dict[str, Any]:
     return {"ok": True, "topic": topic, "guidance": guidance[topic]}
 
 
+def tool_v3_capabilities(args: dict[str, Any]) -> dict[str, Any]:
+    """Separate proven local functions from untested model/desktop capabilities."""
+    workspace = Path(resolve_user_path(require_string(args, "workspace")))
+    workspace.mkdir(parents=True, exist_ok=True)
+    import tempfile
+
+    with tempfile.TemporaryFile(dir=workspace) as f:
+        f.write(b"probe")
+        f.seek(0)
+        writable = f.read() == b"probe"
+    return {
+        "ok": True,
+        "local_files": writable,
+        "native_images": True,
+        "native_three_line_tables": True,
+        "desktop_capture": "not_probed",
+        "model_vision": "not_probed",
+        "office_render": "not_probed",
+        "host": args.get("host", "unknown"),
+        "model": args.get("model", "unknown"),
+        "fallback": "Import a real PNG/JPEG supplied by the user; submit structured JSON through MCP or CLI tool.",
+    }
+
+
+def tool_v3_import_asset(args: dict[str, Any]) -> dict[str, Any]:
+    require_activation()
+    from docx.image.image import Image
+
+    workspace = Path(resolve_user_path(require_string(args, "workspace")))
+    source = Path(resolve_user_path(require_string(args, "source_path")))
+    if not source.is_file() or source.stat().st_size > 25 * 1024 * 1024:
+        raise ToolError("图片不存在或超过 25 MB。")
+    raw = source.read_bytes()
+    try:
+        img = Image.from_blob(raw)
+    except Exception as exc:
+        raise ToolError("无法读取图片；请提供真实 PNG/JPEG。") from exc
+    if (
+        img.content_type not in {"image/png", "image/jpeg"}
+        or img.px_width * img.px_height > 40000000
+    ):
+        raise ToolError("只支持不超过 4000 万像素的 PNG/JPEG。")
+    sha = hashlib.sha256(raw).hexdigest()
+    destination = (
+        workspace
+        / "lab-factory"
+        / "assets"
+        / (sha + (".png" if img.content_type == "image/png" else ".jpg"))
+    )
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if not destination.resolve().is_relative_to(workspace.resolve()):
+        raise ToolError("资产目录不能指向工作区之外。")
+    if not destination.exists():
+        destination.write_bytes(raw)
+    record = artifact_store.register(workspace, destination, "image")
+    record = dict(
+        record,
+        source_description=args.get("source_description", ""),
+        provenance="user_supplied_not_independently_verified",
+    )
+    artifact_store.write(
+        artifact_store.receipt_path(workspace, record["object_id"]), record
+    )
+    return {
+        "ok": True,
+        "asset_id": record["object_id"],
+        "asset": record,
+        "source_claim": args.get("source_description", ""),
+        "provenance": "user_supplied_not_independently_verified",
+    }
+
+
+def tool_v3_verify_draft(args: dict[str, Any]) -> dict[str, Any]:
+    require_activation()
+    workspace = Path(resolve_user_path(require_string(args, "workspace")))
+    path = Path(resolve_user_path(require_string(args, "document_path")))
+    if path.suffix.lower() != ".docx":
+        raise ToolError("草稿必须是 DOCX。")
+    record = artifact_store.register(workspace, path)
+    comparisons = args.get("comparison_paths", [])
+    if not isinstance(comparisons, list) or not all(
+        isinstance(x, str) for x in comparisons
+    ):
+        raise ToolError("comparison_paths 必须是路径数组。")
+    structure = run_v2(
+        ["document-structure-audit", str(path)], allow_validation_failure=True
+    )
+    human = run_v2(["humanization-audit", str(path)], allow_validation_failure=True)
+    diversity = run_v2(
+        ["cohort-similarity", str(path), *[resolve_user_path(x) for x in comparisons]],
+        allow_validation_failure=True,
+    )
+    dependencies = []
+    binding_path = workspace / "lab-factory" / "draft-inputs.json"
+    state_file = workspace / "lab-factory" / "session-state.json"
+    if (
+        state_file.exists()
+        and json.loads(state_file.read_text()).get("version") == "2.1"
+        and not binding_path.exists()
+    ):
+        raise ToolError("自动驾驶草稿须先通过 v3_apply_draft 登记生成材料。")
+    if binding_path.exists():
+        binding = json.loads(binding_path.read_text())
+        if binding.get("draft_id") != record["object_id"]:
+            raise ToolError("草稿与生成材料登记不一致，请重新生成。")
+        for dependency in binding["dependencies"]:
+            artifact_store.verify(
+                workspace, dependency["object_id"], dependency["sha256"]
+            )
+            dependencies.append(dependency)
+    for comparison in comparisons:
+        # Comparison inputs must be copied into this report workspace for reproducible verification.
+        dependencies.append(
+            artifact_store.register(
+                workspace, Path(resolve_user_path(comparison)), "comparison"
+            )
+        )
+    ledger_path = Path(resolve_user_path(require_string(args, "fact_ledger_path")))
+    ledger_receipt = artifact_store.register(workspace, ledger_path, "fact_ledger")
+    ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+    facts = ledger.get("facts")
+    if not isinstance(facts, list) or not facts:
+        raise ToolError(
+            "事实清单须包含 facts；每项注明 source 和 status，未知事实不能写成已完成。"
+        )
+    if any(
+        not isinstance(x, dict)
+        or not x.get("source")
+        or x.get("status") not in {"provided", "observed", "unknown"}
+        for x in facts
+    ):
+        raise ToolError("事实清单缺少来源或状态。")
+    dependencies.append(ledger_receipt)
+    from docx import Document
+
+    paragraphs = [p.text for p in Document(path).paragraphs]
+    disclosure = any("AI 辅助生成声明：" in p for p in paragraphs[:3])
+    status = (
+        "pass"
+        if structure.get("status") == "pass"
+        and not structure.get("pending_evidence_count")
+        and human.get("status") == "pass"
+        and diversity.get("gate") == "pass"
+        and disclosure
+        else "retryable_failure"
+    )
+    audit = {
+        "status": status,
+        "structure": structure,
+        "humanization": human,
+        "diversity": diversity,
+        "dependencies": dependencies,
+        "disclosure_at_start": disclosure,
+        "fact_boundary": "source declarations recorded; human review still required for factual truth",
+        "office_visual_review": "required",
+    }
+    certified = artifact_store.certify(workspace, record, audit)
+    return {
+        "ok": status == "pass",
+        "draft": {k: certified[k] for k in ("object_id", "sha256", "relative_path")},
+        "audit": audit,
+    }
+
+
+def tool_v3_apply_draft(args: dict[str, Any]) -> dict[str, Any]:
+    require_activation()
+    workspace = Path(resolve_user_path(require_string(args, "workspace")))
+    state = autopilot.read_state(workspace)
+    if state.get("orchestration_state") != "running":
+        raise ToolError("请先完成自动驾驶的生成前确认。")
+    if "requirements" not in state.get("object_ids", {}):
+        raise ToolError(
+            "旧自动驾驶会话缺少任务快照；请保留原会话并使用旧客户端完成，或在新工作区重新准备。此次调用未扣次。",
+            code="LEGACY_SESSION",
+        )
+    requirements = autopilot.load_object(
+        autopilot.object_path(workspace, state["object_ids"]["requirements"]),
+        "requirements",
+    )
+    package_path = Path(resolve_user_path(require_string(args, "content_package_path")))
+    package = json.loads(package_path.read_text(encoding="utf-8"))
+    required = requirements.get("required_artifacts", [])
+    blocks = {
+        b.get("id"): b
+        for item in package.get("items", [])
+        for b in item.get("blocks", [])
+    }
+    coverage = package.get("requirement_coverage", {})
+    for requirement in required:
+        if (
+            not isinstance(requirement, dict)
+            or not requirement.get("id")
+            or not requirement.get("kind")
+            or not requirement.get("source")
+        ):
+            raise ToolError("每项 required_artifacts 须包含 id、kind、source。")
+        block = blocks.get(coverage.get(requirement["id"]))
+        if (
+            not block
+            or block.get("artifact_kind", block.get("type")) != requirement["kind"]
+        ):
+            raise ToolError("任务构件缺失或类型不符：" + requirement["id"])
+    usage = acknowledge_report_usage(workspace, state["report_id"])
+    command = [
+        "apply",
+        resolve_user_path(require_string(args, "profile_path")),
+        resolve_user_path(require_string(args, "docx_path")),
+        resolve_user_path(require_string(args, "content_package_path")),
+        "--output",
+        resolve_user_path(require_string(args, "output_path")),
+        "--workspace",
+        str(workspace),
+    ]
+    if args.get("overwrite") is True:
+        command.append("--overwrite")
+    result = run_v2(command, timeout=180)
+    result["draft"] = artifact_store.register(
+        workspace, Path(result["output_document"])
+    )
+    bindings = [
+        artifact_store.register(workspace, package_path, "content_package"),
+        artifact_store.register(
+            workspace,
+            autopilot.object_path(workspace, state["object_ids"]["requirements"]),
+            "requirements",
+        ),
+    ]
+    artifact_store.write(
+        workspace / "lab-factory" / "draft-inputs.json",
+        {"draft_id": result["draft"]["object_id"], "dependencies": bindings},
+    )
+    result["requirement_coverage"] = {
+        "checked_count": len(required),
+        "status": "covered" if required else "no_structured_requirements",
+        "boundary": "declared block kinds checked; visual semantics require review",
+    }
+    result["license_usage"] = usage
+    result["next_tool"] = "lab_factory_v3_verify_draft"
+    return result
+
+
 TOOLS: dict[str, dict[str, Any]] = {
+    "lab_factory_v3_capabilities": {
+        "description": "Probe local capabilities; model vision and desktop access remain unknown until tested.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "workspace": {"type": "string"},
+                "host": {"type": "string"},
+                "model": {"type": "string"},
+            },
+            "required": ["workspace"],
+        },
+        "handler": tool_v3_capabilities,
+    },
+    "lab_factory_v3_import_asset": {
+        "description": "Copy real PNG/JPEG into the workspace and return a hash-bound asset for native figures.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "workspace": {"type": "string"},
+                "source_path": {"type": "string"},
+                "source_description": {"type": "string"},
+            },
+            "required": ["workspace", "source_path"],
+        },
+        "handler": tool_v3_import_asset,
+    },
+    "lab_factory_v3_verify_draft": {
+        "description": "Run local DOCX quality gates and bind the result to real files before either workflow can finalize.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "workspace": {"type": "string"},
+                "document_path": {"type": "string"},
+                "fact_ledger_path": {"type": "string"},
+                "comparison_paths": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["workspace", "document_path", "fact_ledger_path"],
+        },
+        "handler": tool_v3_verify_draft,
+    },
+    "lab_factory_v3_apply_draft": {
+        "description": "Apply a v2 or v3 native block package in a confirmed balanced session, then verify_draft.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "workspace": {"type": "string"},
+                "profile_path": {"type": "string"},
+                "docx_path": {"type": "string"},
+                "content_package_path": {"type": "string"},
+                "output_path": {"type": "string"},
+                "overwrite": {"type": "boolean"},
+            },
+            "required": [
+                "workspace",
+                "profile_path",
+                "docx_path",
+                "content_package_path",
+                "output_path",
+            ],
+        },
+        "handler": tool_v3_apply_draft,
+    },
     "lab_factory_status": {
         "description": "查看 Lab Skill Factory MCP 的激活状态、skill 根目录和商业化保护提示。",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
@@ -1381,7 +1699,7 @@ TOOLS: dict[str, dict[str, Any]] = {
             "properties": {
                 "client": {
                     "type": "string",
-                    "enum": ["claude_code", "codex", "generic_stdio"],
+                    "enum": ["claude_code", "codex", "generic_stdio", "workbuddy", "kimi"],
                     "default": "generic_stdio",
                 }
             },
@@ -1887,14 +2205,15 @@ def call_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
             "content": [{"type": "text", "text": json_text(data)}],
             "structuredContent": data,
         }
-    except ToolError as exc:
-        data = {"ok": False, "error": str(exc), "error_code": exc.code}
-        if exc.details:
+    except (ToolError, artifact_store.ArtifactError, ValueError, OSError) as exc:
+        error_code = getattr(exc, "code", "ARTIFACT_INVALID")
+        data = {"ok": False, "error": str(exc), "error_code": error_code}
+        if getattr(exc, "details", None):
             data["details"] = exc.details
         event = {
             "event": "tool_call", "version": SERVER_VERSION, "platform": sys.platform,
             "architecture": commercial_client.client_platform()[1], "tool": name,
-            "ok": False, "error_code": exc.code.lower(),
+            "ok": False, "error_code": error_code.lower(),
             "duration_ms": int((time.monotonic() - started) * 1000),
             "channel_id": commercial_client.read_json(commercial_client.LICENSE_METADATA_FILE).get("channel_id"),
         }
@@ -1935,7 +2254,7 @@ def handle_request(message: dict[str, Any]) -> dict[str, Any] | None:
                         "if supplied, call lab_factory_v2_analyze_writing_samples and pass its profile to lab_factory_v2_prepare_autopilot; if skipped, continue without blocking. "
                         "New reports should then use lab_factory_v2_prepare_autopilot and obey its next_action. "
                         "When content is requested, read every required object ID, build a fact ledger, apply the writer genome, run identity-conditioned humanization, "
-                        "and provide the humanization and cross-report diversity gate evidence before final review. "
+                        "Use lab_factory_v3_apply_draft in balanced mode, then lab_factory_v3_verify_draft in both modes; submit its returned real-file draft receipt before final review. Never invent passing audit objects. "
                         "Balanced mode normally asks only for stable preferences, preflight confirmation, exceptions that materially affect quality or safety, and final DOCX review. "
                         "Legacy v2.0 sessions continue with the strict lab_factory_v2_create_session workflow."
                     ),

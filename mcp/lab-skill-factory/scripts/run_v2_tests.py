@@ -712,11 +712,15 @@ def run() -> dict:
             server.tool_v2_mark_content_ready({"workspace": str(api_workspace), "content_summary": "两个字段内容已准备"})
             content_path = root / "content.json"
             ENGINE.write_json(content_path, content)
-            api_output = root / "api-draft.docx"
+            api_output = api_workspace / "api-draft.docx"
             draft_result = server.tool_v2_apply_draft({
                 "workspace": str(api_workspace), "profile_path": str(updated_profile_path),
                 "docx_path": str(template), "content_package_path": str(content_path), "output_path": str(api_output),
             })
+            ledger_path = api_workspace / "facts.json"
+            ENGINE.write_json(ledger_path, {"facts": [{"source": "test fixture", "status": "provided"}]})
+            verified = server.tool_v3_verify_draft({"workspace": str(api_workspace), "document_path": str(api_output), "fact_ledger_path": str(ledger_path)})
+            assert verified["ok"], verified
             api_review_id = draft_result["session"]["review_id"]
             server.tool_v2_review_draft({"workspace": str(api_workspace), "review_id": api_review_id, "decision": "approve", "user_feedback_summary": "WPS 检查通过"})
             server.tool_v2_finalize({"workspace": str(api_workspace), "review_id": api_review_id, "generated_path": str(api_output), "reference_paths": [], "user_confirmation_summary": "用户确认终稿"})

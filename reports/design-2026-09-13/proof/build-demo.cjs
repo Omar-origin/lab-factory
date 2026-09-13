@@ -1,0 +1,12 @@
+const fs = require('fs');
+const path = require('path');
+const {Document,Packer,Paragraph,TextRun,Table,TableRow,TableCell,ImageRun,AlignmentType,BorderStyle,WidthType}=require('docx');
+const dir=__dirname;
+const none={style:BorderStyle.NONE,size:0,color:'FFFFFF'};
+const line=(size)=>({style:BorderStyle.SINGLE,size,color:'000000'});
+const widths=[1800,2000,5200];
+const rows=[['构件','文档中的形态','本次演示的用途'],['截图','内嵌 PNG 图片','使用官网实际截图验证图片嵌入'],['三线表','原生 Word 表格','表格文字、行列和边框仍可编辑'],['题注','普通可编辑段落','本样例验证固定编号，自动引用留待集成']];
+const table=new Table({width:{size:9000,type:WidthType.DXA},columnWidths:widths,borders:{top:none,bottom:none,left:none,right:none,insideHorizontal:none,insideVertical:none},rows:rows.map((r,ri)=>new TableRow({tableHeader:ri===0,cantSplit:true,children:r.map((t,ci)=>new TableCell({width:{size:widths[ci],type:WidthType.DXA},margins:{top:110,bottom:110,left:90,right:90},borders:{top:ri===0?line(12):none,bottom:ri===0?line(4):ri===rows.length-1?line(12):none,left:none,right:none},children:[new Paragraph({children:[new TextRun({text:t,bold:ri===0,size:20})]})]}))}))});
+const text=(s,extra={})=>new Paragraph({spacing:{after:150},children:[new TextRun({text:s,size:22,...extra})]});
+const doc=new Document({creator:'Lab Factory',title:'截图与原生三线表：技术验证',styles:{default:{document:{run:{font:'宋体',size:22},paragraph:{spacing:{line:290}}}}},sections:[{properties:{page:{size:{width:11906,height:16838},margin:{top:1000,bottom:1000,left:1440,right:1440}}},children:[text('截图与原生三线表：技术验证',{bold:true,size:34}),text('独立可行性样例 · 2026-09-13 · 尚未接入报告生成主流程',{color:'666666',size:20}),text('表 1-1 为原生表格。图 1-1 来自本次实际打开的公开网页，仅验证图片插入；不是实验运行证据，也不是生成的模拟截图。'),new Paragraph({alignment:AlignmentType.CENTER,keepNext:true,children:[new TextRun({text:'表 1-1 本次文档构件清单',bold:true,size:22})]}),table,text(''),new Paragraph({alignment:AlignmentType.CENTER,keepNext:true,children:[new ImageRun({type:'png',data:fs.readFileSync(path.join(dir,'public-docs-screenshot.png')),transformation:{width:520,height:292.5},altText:{name:'官网文档页实截',title:'Lab Factory 公开文档页面',description:'2026-09-13 浏览器实际截图，技术验证素材'}})]}),new Paragraph({alignment:AlignmentType.CENTER,children:[new TextRun({text:'图 1-1 Lab Factory 公开文档页实截',size:20})]}),text('来源：https://lab.elyther.top/docs；截图日期：2026-09-13。',{color:'666666',size:18}),text('验证边界：验证嵌入与原生对象结构。任意老师模板、长表跨页、WPS/Office 各版本保存往返和多宿主调用仍需后续验收。',{size:19})]}]});
+Packer.toBuffer(doc).then(b=>fs.writeFileSync(path.join(dir,'native-image-and-three-line-table.docx'),b));

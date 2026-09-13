@@ -1,0 +1,484 @@
+{
+  "ok": true,
+  "count": 20,
+  "failed": [],
+  "results": [
+    {
+      "id": "md-insert-purpose",
+      "ok": true,
+      "returncode": 0,
+      "source_unchanged": true,
+      "output_exists": true,
+      "content_found": true,
+      "disclaimer_first": true,
+      "stdout": "{\n  \"ok\": true,\n  \"fill_map\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-insert-purpose/fill-map.json\",\n  \"source_fill\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-insert-purpose/fill.md\",\n  \"target_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-insert-purpose/target.md\",\n  \"output_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-insert-purpose/draft.md\",\n  \"target_sha256\": \"bdae2af9180b55d267a6be07c070f3abfb9f3da2d99b0ee8ee106a50fe6095c1\",\n  \"output_sha256\": \"f6452a5f1ee59ac64a3e6f7564f5afda0a280d5e2ae5d79d34893ad960d72d52\",\n  \"operation_count\": 1,\n  \"operations\": [\n    {\n      \"id\": \"md-insert-purpose\",\n      \"operation\": \"insert_after\",\n      \"anchor\": \"## 实验目的\",\n      \"status\": \"applied\"\n    }\n  ],\n  \"limitations\": [\n    \"DOCX complex objects such as text boxes, formulas, floating images, fields, comments, and tracked changes may require manual handling.\",\n    \"First-pass output only fills mapped anchors; deleting template hints must wait for user-confirmed finalize.\"\n  ]\n}",
+      "stderr": ""
+    },
+    {
+      "id": "md-insert-env",
+      "ok": true,
+      "returncode": 0,
+      "source_unchanged": true,
+      "output_exists": true,
+      "content_found": true,
+      "disclaimer_first": true,
+      "stdout": "{\n  \"ok\": true,\n  \"fill_map\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-insert-env/fill-map.json\",\n  \"source_fill\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-insert-env/fill.md\",\n  \"target_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-insert-env/target.md\",\n  \"output_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-insert-env/draft.md\",\n  \"target_sha256\": \"bdae2af9180b55d267a6be07c070f3abfb9f3da2d99b0ee8ee106a50fe6095c1\",\n  \"output_sha256\": \"53d3d57415dff541cf7f0fa6b6d7075d199a62153e8b5ab197d9a5cb4c8dda19\",\n  \"operation_count\": 1,\n  \"operations\": [\n    {\n      \"id\": \"md-insert-env\",\n      \"operation\": \"insert_after\",\n      \"anchor\": \"## 实验环境\",\n      \"status\": \"applied\"\n    }\n  ],\n  \"limitations\": [\n    \"DOCX complex objects such as text boxes, formulas, floating images, fields, comments, and tracked changes may require manual handling.\",\n    \"First-pass output only fills mapped anchors; deleting template hints must wait for user-confirmed finalize.\"\n  ]\n}",
+      "stderr": ""
+    },
+    {
+      "id": "md-replace-placeholder",
+      "ok": true,
+      "returncode": 0,
+      "source_unchanged": true,
+      "output_exists": true,
+      "content_found": true,
+      "disclaimer_first": true,
+      "stdout": "{\n  \"ok\": true,\n  \"fill_map\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-replace-placeholder/fill-map.json\",\n  \"source_fill\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-replace-placeholder/fill.md\",\n  \"target_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-replace-placeholder/target.md\",\n  \"output_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-replace-placeholder/draft.md\",\n  \"target_sha256\": \"87d7dfc3d337a72dccfc576c4108bb3aef945d9a4c55dd3b21764457860b368b\",\n  \"output_sha256\": \"6c9c3d68ff11a7dac05ccb086c5d59c3251b6974d7d3d8d3b611fc5553ec1283\",\n  \"operation_count\": 1,\n  \"operations\": [\n    {\n      \"id\": \"md-replace-placeholder\",\n      \"operation\": \"replace_placeholder\",\n      \"anchor\": \"<待填写正文>\",\n      \"status\": \"applied\"\n    }\n  ],\n  \"limitations\": [\n    \"DOCX complex objects such as text boxes, formulas, floating images, fields, comments, and tracked changes may require manual handling.\",\n    \"First-pass output only fills mapped anchors; deleting template hints must wait for user-confirmed finalize.\"\n  ]\n}",
+      "stderr": ""
+    },
+    {
+      "id": "md-table-placeholder",
+      "ok": true,
+      "returncode": 0,
+      "source_unchanged": true,
+      "output_exists": true,
+      "content_found": true,
+      "disclaimer_first": true,
+      "stdout": "{\n  \"ok\": true,\n  \"fill_map\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-table-placeholder/fill-map.json\",\n  \"source_fill\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-table-placeholder/fill.md\",\n  \"target_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-table-placeholder/target.md\",\n  \"output_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-table-placeholder/draft.md\",\n  \"target_sha256\": \"8a680c7bafb64abc28a3b227c17eb6efe2f864de7ce942cdaecc2900528e471e\",\n  \"output_sha256\": \"f71a794f4ab232718e4b66c3d7685bdecc850b59d0878c28b77099d3b4d87319\",\n  \"operation_count\": 1,\n  \"operations\": [\n    {\n      \"id\": \"md-table-placeholder\",\n      \"operation\": \"fill_table_cell\",\n      \"anchor\": \"<表格待填>\",\n      \"status\": \"applied\"\n    }\n  ],\n  \"limitations\": [\n    \"DOCX complex objects such as text boxes, formulas, floating images, fields, comments, and tracked changes may require manual handling.\",\n    \"First-pass output only fills mapped anchors; deleting template hints must wait for user-confirmed finalize.\"\n  ]\n}",
+      "stderr": ""
+    },
+    {
+      "id": "md-screenshot-placeholder",
+      "ok": true,
+      "returncode": 0,
+      "source_unchanged": true,
+      "output_exists": true,
+      "content_found": true,
+      "disclaimer_first": true,
+      "stdout": "{\n  \"ok\": true,\n  \"fill_map\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-screenshot-placeholder/fill-map.json\",\n  \"source_fill\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-screenshot-placeholder/fill.md\",\n  \"target_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-screenshot-placeholder/target.md\",\n  \"output_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-screenshot-placeholder/draft.md\",\n  \"target_sha256\": \"bdae2af9180b55d267a6be07c070f3abfb9f3da2d99b0ee8ee106a50fe6095c1\",\n  \"output_sha256\": \"cdb65f5a96060074f7b4269e1b32b65c2517d3575e3b17714f4ba15221157472\",\n  \"operation_count\": 1,\n  \"operations\": [\n    {\n      \"id\": \"md-screenshot-placeholder\",\n      \"operation\": \"insert_after\",\n      \"anchor\": \"## 实验截图\",\n      \"status\": \"applied\"\n    }\n  ],\n  \"limitations\": [\n    \"DOCX complex objects such as text boxes, formulas, floating images, fields, comments, and tracked changes may require manual handling.\",\n    \"First-pass output only fills mapped anchors; deleting template hints must wait for user-confirmed finalize.\"\n  ]\n}",
+      "stderr": ""
+    },
+    {
+      "id": "md-summary",
+      "ok": true,
+      "returncode": 0,
+      "source_unchanged": true,
+      "output_exists": true,
+      "content_found": true,
+      "disclaimer_first": true,
+      "stdout": "{\n  \"ok\": true,\n  \"fill_map\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-summary/fill-map.json\",\n  \"source_fill\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-summary/fill.md\",\n  \"target_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-summary/target.md\",\n  \"output_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-summary/draft.md\",\n  \"target_sha256\": \"bdae2af9180b55d267a6be07c070f3abfb9f3da2d99b0ee8ee106a50fe6095c1\",\n  \"output_sha256\": \"c87f77241aa0004788350e5f28e0ea4ab220ea268f692ffaea50b8e8ee6bd7ff\",\n  \"operation_count\": 1,\n  \"operations\": [\n    {\n      \"id\": \"md-summary\",\n      \"operation\": \"insert_after\",\n      \"anchor\": \"## 实验小结\",\n      \"status\": \"applied\"\n    }\n  ],\n  \"limitations\": [\n    \"DOCX complex objects such as text boxes, formulas, floating images, fields, comments, and tracked changes may require manual handling.\",\n    \"First-pass output only fills mapped anchors; deleting template hints must wait for user-confirmed finalize.\"\n  ]\n}",
+      "stderr": ""
+    },
+    {
+      "id": "md-final-note",
+      "ok": true,
+      "returncode": 0,
+      "source_unchanged": true,
+      "output_exists": true,
+      "content_found": true,
+      "disclaimer_first": true,
+      "stdout": "{\n  \"ok\": true,\n  \"fill_map\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-final-note/fill-map.json\",\n  \"source_fill\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-final-note/fill.md\",\n  \"target_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-final-note/target.md\",\n  \"output_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-final-note/draft.md\",\n  \"target_sha256\": \"bdae2af9180b55d267a6be07c070f3abfb9f3da2d99b0ee8ee106a50fe6095c1\",\n  \"output_sha256\": \"bb51af0b1facaea9f97dee5b01b436ffcaa6d87fdbb44d484a2f4c86ed2a0718\",\n  \"operation_count\": 1,\n  \"operations\": [\n    {\n      \"id\": \"md-final-note\",\n      \"operation\": \"insert_after\",\n      \"anchor\": \"## 附录\",\n      \"status\": \"applied\"\n    }\n  ],\n  \"limitations\": [\n    \"DOCX complex objects such as text boxes, formulas, floating images, fields, comments, and tracked changes may require manual handling.\",\n    \"First-pass output only fills mapped anchors; deleting template hints must wait for user-confirmed finalize.\"\n  ]\n}",
+      "stderr": ""
+    },
+    {
+      "id": "md-tool-artifact",
+      "ok": true,
+      "returncode": 0,
+      "source_unchanged": true,
+      "output_exists": true,
+      "content_found": true,
+      "disclaimer_first": true,
+      "stdout": "{\n  \"ok\": true,\n  \"fill_map\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-tool-artifact/fill-map.json\",\n  \"source_fill\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-tool-artifact/fill.md\",\n  \"target_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-tool-artifact/target.md\",\n  \"output_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-tool-artifact/draft.md\",\n  \"target_sha256\": \"714c895ced8c6d7181cfdd709de725517700b7bb944d28fa28ad377b718d58e1\",\n  \"output_sha256\": \"d2209392efd7f6de6c36f581336e805b64263e10d84754ae1d6900699974ed8f\",\n  \"operation_count\": 1,\n  \"operations\": [\n    {\n      \"id\": \"md-tool-artifact\",\n      \"operation\": \"replace_placeholder\",\n      \"anchor\": \"<工具环境>\",\n      \"status\": \"applied\"\n    }\n  ],\n  \"limitations\": [\n    \"DOCX complex objects such as text boxes, formulas, floating images, fields, comments, and tracked changes may require manual handling.\",\n    \"First-pass output only fills mapped anchors; deleting template hints must wait for user-confirmed finalize.\"\n  ]\n}",
+      "stderr": ""
+    },
+    {
+      "id": "md-source-code",
+      "ok": true,
+      "returncode": 0,
+      "source_unchanged": true,
+      "output_exists": true,
+      "content_found": true,
+      "disclaimer_first": true,
+      "stdout": "{\n  \"ok\": true,\n  \"fill_map\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-source-code/fill-map.json\",\n  \"source_fill\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-source-code/fill.md\",\n  \"target_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-source-code/target.md\",\n  \"output_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-source-code/draft.md\",\n  \"target_sha256\": \"bdae2af9180b55d267a6be07c070f3abfb9f3da2d99b0ee8ee106a50fe6095c1\",\n  \"output_sha256\": \"b01d837c57e32fcc66d860a82719129aa492142fc46a16e68b876e8c506cfc38\",\n  \"operation_count\": 1,\n  \"operations\": [\n    {\n      \"id\": \"md-source-code\",\n      \"operation\": \"insert_after\",\n      \"anchor\": \"## 源码说明\",\n      \"status\": \"applied\"\n    }\n  ],\n  \"limitations\": [\n    \"DOCX complex objects such as text boxes, formulas, floating images, fields, comments, and tracked changes may require manual handling.\",\n    \"First-pass output only fills mapped anchors; deleting template hints must wait for user-confirmed finalize.\"\n  ]\n}",
+      "stderr": ""
+    },
+    {
+      "id": "md-reference-boundary",
+      "ok": true,
+      "returncode": 0,
+      "source_unchanged": true,
+      "output_exists": true,
+      "content_found": true,
+      "disclaimer_first": true,
+      "stdout": "{\n  \"ok\": true,\n  \"fill_map\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-reference-boundary/fill-map.json\",\n  \"source_fill\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-reference-boundary/fill.md\",\n  \"target_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-reference-boundary/target.md\",\n  \"output_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/md-reference-boundary/draft.md\",\n  \"target_sha256\": \"bdae2af9180b55d267a6be07c070f3abfb9f3da2d99b0ee8ee106a50fe6095c1\",\n  \"output_sha256\": \"ecba5a39b092c2a6a83ea31e5321ab8b747a37329009ad5b18ae5091eabeb178\",\n  \"operation_count\": 1,\n  \"operations\": [\n    {\n      \"id\": \"md-reference-boundary\",\n      \"operation\": \"insert_after\",\n      \"anchor\": \"## 参考案例\",\n      \"status\": \"applied\"\n    }\n  ],\n  \"limitations\": [\n    \"DOCX complex objects such as text boxes, formulas, floating images, fields, comments, and tracked changes may require manual handling.\",\n    \"First-pass output only fills mapped anchors; deleting template hints must wait for user-confirmed finalize.\"\n  ]\n}",
+      "stderr": ""
+    },
+    {
+      "id": "docx-insert-purpose",
+      "ok": true,
+      "returncode": 0,
+      "source_unchanged": true,
+      "output_exists": true,
+      "content_found": true,
+      "disclaimer_first": true,
+      "stdout": "{\n  \"ok\": true,\n  \"fill_map\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-insert-purpose/fill-map.json\",\n  \"source_fill\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-insert-purpose/fill.md\",\n  \"target_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-insert-purpose/target.docx\",\n  \"output_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-insert-purpose/draft.docx\",\n  \"target_sha256\": \"ea8fa3e3e6b557d75ff8306995c668d8d26f1b23022d4ade6a9503b3d07b12f8\",\n  \"output_sha256\": \"e8a26799260ec73854ea8f5d9b85a0d1e879d469257f452ecb2ca8f2b4b9e019\",\n  \"operation_count\": 1,\n  \"operations\": [\n    {\n      \"id\": \"docx-insert-purpose\",\n      \"operation\": \"insert_after\",\n      \"anchor\": \"实验目的\",\n      \"status\": \"applied\"\n    }\n  ],\n  \"limitations\": [\n    \"DOCX complex objects such as text boxes, formulas, floating images, fields, comments, and tracked changes may require manual handling.\",\n    \"First-pass output only fills mapped anchors; deleting template hints must wait for user-confirmed finalize.\"\n  ]\n}",
+      "stderr": ""
+    },
+    {
+      "id": "docx-insert-env",
+      "ok": true,
+      "returncode": 0,
+      "source_unchanged": true,
+      "output_exists": true,
+      "content_found": true,
+      "disclaimer_first": true,
+      "stdout": "{\n  \"ok\": true,\n  \"fill_map\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-insert-env/fill-map.json\",\n  \"source_fill\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-insert-env/fill.md\",\n  \"target_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-insert-env/target.docx\",\n  \"output_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-insert-env/draft.docx\",\n  \"target_sha256\": \"ea8fa3e3e6b557d75ff8306995c668d8d26f1b23022d4ade6a9503b3d07b12f8\",\n  \"output_sha256\": \"f6889fd968a4a1cf2a430586b81ae72ec162129224df035471dabe3cc5a1eb5e\",\n  \"operation_count\": 1,\n  \"operations\": [\n    {\n      \"id\": \"docx-insert-env\",\n      \"operation\": \"insert_after\",\n      \"anchor\": \"实验环境\",\n      \"status\": \"applied\"\n    }\n  ],\n  \"limitations\": [\n    \"DOCX complex objects such as text boxes, formulas, floating images, fields, comments, and tracked changes may require manual handling.\",\n    \"First-pass output only fills mapped anchors; deleting template hints must wait for user-confirmed finalize.\"\n  ]\n}",
+      "stderr": ""
+    },
+    {
+      "id": "docx-replace-placeholder",
+      "ok": true,
+      "returncode": 0,
+      "source_unchanged": true,
+      "output_exists": true,
+      "content_found": true,
+      "disclaimer_first": true,
+      "stdout": "{\n  \"ok\": true,\n  \"fill_map\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-replace-placeholder/fill-map.json\",\n  \"source_fill\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-replace-placeholder/fill.md\",\n  \"target_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-replace-placeholder/target.docx\",\n  \"output_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-replace-placeholder/draft.docx\",\n  \"target_sha256\": \"ea8fa3e3e6b557d75ff8306995c668d8d26f1b23022d4ade6a9503b3d07b12f8\",\n  \"output_sha256\": \"d0e5ba508f9be04f340e71a7a9b204d3a2d3f593f309b7ad62eeb00f305bc025\",\n  \"operation_count\": 1,\n  \"operations\": [\n    {\n      \"id\": \"docx-replace-placeholder\",\n      \"operation\": \"replace_placeholder\",\n      \"anchor\": \"<待填写正文>\",\n      \"status\": \"applied\"\n    }\n  ],\n  \"limitations\": [\n    \"DOCX complex objects such as text boxes, formulas, floating images, fields, comments, and tracked changes may require manual handling.\",\n    \"First-pass output only fills mapped anchors; deleting template hints must wait for user-confirmed finalize.\"\n  ]\n}",
+      "stderr": ""
+    },
+    {
+      "id": "docx-table-placeholder",
+      "ok": true,
+      "returncode": 0,
+      "source_unchanged": true,
+      "output_exists": true,
+      "content_found": true,
+      "disclaimer_first": true,
+      "stdout": "{\n  \"ok\": true,\n  \"fill_map\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-table-placeholder/fill-map.json\",\n  \"source_fill\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-table-placeholder/fill.md\",\n  \"target_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-table-placeholder/target.docx\",\n  \"output_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-table-placeholder/draft.docx\",\n  \"target_sha256\": \"ea8fa3e3e6b557d75ff8306995c668d8d26f1b23022d4ade6a9503b3d07b12f8\",\n  \"output_sha256\": \"92d359f045a1be39e47f7a0510745188a4266b3e832d17cdad1be66e3d9a0e44\",\n  \"operation_count\": 1,\n  \"operations\": [\n    {\n      \"id\": \"docx-table-placeholder\",\n      \"operation\": \"fill_table_cell\",\n      \"anchor\": \"<表格待填>\",\n      \"status\": \"applied\"\n    }\n  ],\n  \"limitations\": [\n    \"DOCX complex objects such as text boxes, formulas, floating images, fields, comments, and tracked changes may require manual handling.\",\n    \"First-pass output only fills mapped anchors; deleting template hints must wait for user-confirmed finalize.\"\n  ]\n}",
+      "stderr": ""
+    },
+    {
+      "id": "docx-table-index",
+      "ok": true,
+      "returncode": 0,
+      "source_unchanged": true,
+      "output_exists": true,
+      "content_found": true,
+      "disclaimer_first": true,
+      "stdout": "{\n  \"ok\": true,\n  \"fill_map\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-table-index/fill-map.json\",\n  \"source_fill\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-table-index/fill.md\",\n  \"target_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-table-index/target.docx\",\n  \"output_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-table-index/draft.docx\",\n  \"target_sha256\": \"ea8fa3e3e6b557d75ff8306995c668d8d26f1b23022d4ade6a9503b3d07b12f8\",\n  \"output_sha256\": \"aeda3779a774ae76eb99d62be79928749db3bc337f6512dbd579f21d633aaf8a\",\n  \"operation_count\": 1,\n  \"operations\": [\n    {\n      \"id\": \"docx-table-index\",\n      \"operation\": \"fill_table_cell\",\n      \"anchor\": \"table:0:1:1\",\n      \"status\": \"applied\"\n    }\n  ],\n  \"limitations\": [\n    \"DOCX complex objects such as text boxes, formulas, floating images, fields, comments, and tracked changes may require manual handling.\",\n    \"First-pass output only fills mapped anchors; deleting template hints must wait for user-confirmed finalize.\"\n  ]\n}",
+      "stderr": ""
+    },
+    {
+      "id": "docx-screenshot-placeholder",
+      "ok": true,
+      "returncode": 0,
+      "source_unchanged": true,
+      "output_exists": true,
+      "content_found": true,
+      "disclaimer_first": true,
+      "stdout": "{\n  \"ok\": true,\n  \"fill_map\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-screenshot-placeholder/fill-map.json\",\n  \"source_fill\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-screenshot-placeholder/fill.md\",\n  \"target_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-screenshot-placeholder/target.docx\",\n  \"output_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-screenshot-placeholder/draft.docx\",\n  \"target_sha256\": \"ea8fa3e3e6b557d75ff8306995c668d8d26f1b23022d4ade6a9503b3d07b12f8\",\n  \"output_sha256\": \"d66778526109d3e726bac15e63f39cb1528b2dd065feba9158eb9349eb544238\",\n  \"operation_count\": 1,\n  \"operations\": [\n    {\n      \"id\": \"docx-screenshot-placeholder\",\n      \"operation\": \"insert_after\",\n      \"anchor\": \"实验截图\",\n      \"status\": \"applied\"\n    }\n  ],\n  \"limitations\": [\n    \"DOCX complex objects such as text boxes, formulas, floating images, fields, comments, and tracked changes may require manual handling.\",\n    \"First-pass output only fills mapped anchors; deleting template hints must wait for user-confirmed finalize.\"\n  ]\n}",
+      "stderr": ""
+    },
+    {
+      "id": "docx-summary",
+      "ok": true,
+      "returncode": 0,
+      "source_unchanged": true,
+      "output_exists": true,
+      "content_found": true,
+      "disclaimer_first": true,
+      "stdout": "{\n  \"ok\": true,\n  \"fill_map\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-summary/fill-map.json\",\n  \"source_fill\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-summary/fill.md\",\n  \"target_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-summary/target.docx\",\n  \"output_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-summary/draft.docx\",\n  \"target_sha256\": \"ea8fa3e3e6b557d75ff8306995c668d8d26f1b23022d4ade6a9503b3d07b12f8\",\n  \"output_sha256\": \"1ef15d4aaff3344c53305d7c0f28472ddb75c7516835989d5caae7e924977ffa\",\n  \"operation_count\": 1,\n  \"operations\": [\n    {\n      \"id\": \"docx-summary\",\n      \"operation\": \"insert_after\",\n      \"anchor\": \"实验小结\",\n      \"status\": \"applied\"\n    }\n  ],\n  \"limitations\": [\n    \"DOCX complex objects such as text boxes, formulas, floating images, fields, comments, and tracked changes may require manual handling.\",\n    \"First-pass output only fills mapped anchors; deleting template hints must wait for user-confirmed finalize.\"\n  ]\n}",
+      "stderr": ""
+    },
+    {
+      "id": "docx-final-note",
+      "ok": true,
+      "returncode": 0,
+      "source_unchanged": true,
+      "output_exists": true,
+      "content_found": true,
+      "disclaimer_first": true,
+      "stdout": "{\n  \"ok\": true,\n  \"fill_map\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-final-note/fill-map.json\",\n  \"source_fill\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-final-note/fill.md\",\n  \"target_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-final-note/target.docx\",\n  \"output_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-final-note/draft.docx\",\n  \"target_sha256\": \"ea8fa3e3e6b557d75ff8306995c668d8d26f1b23022d4ade6a9503b3d07b12f8\",\n  \"output_sha256\": \"dddc9105f7d2bcd2455725f1eb257987399d84323408fe18a439e85e475cafe8\",\n  \"operation_count\": 1,\n  \"operations\": [\n    {\n      \"id\": \"docx-final-note\",\n      \"operation\": \"insert_after\",\n      \"anchor\": \"附录\",\n      \"status\": \"applied\"\n    }\n  ],\n  \"limitations\": [\n    \"DOCX complex objects such as text boxes, formulas, floating images, fields, comments, and tracked changes may require manual handling.\",\n    \"First-pass output only fills mapped anchors; deleting template hints must wait for user-confirmed finalize.\"\n  ]\n}",
+      "stderr": ""
+    },
+    {
+      "id": "docx-tool-artifact",
+      "ok": true,
+      "returncode": 0,
+      "source_unchanged": true,
+      "output_exists": true,
+      "content_found": true,
+      "disclaimer_first": true,
+      "stdout": "{\n  \"ok\": true,\n  \"fill_map\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-tool-artifact/fill-map.json\",\n  \"source_fill\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-tool-artifact/fill.md\",\n  \"target_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-tool-artifact/target.docx\",\n  \"output_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-tool-artifact/draft.docx\",\n  \"target_sha256\": \"ea8fa3e3e6b557d75ff8306995c668d8d26f1b23022d4ade6a9503b3d07b12f8\",\n  \"output_sha256\": \"53029c0c8180fc1a73b0817ab5f49345e66cdc561f066229c2e99b9497a53dbb\",\n  \"operation_count\": 1,\n  \"operations\": [\n    {\n      \"id\": \"docx-tool-artifact\",\n      \"operation\": \"replace_placeholder\",\n      \"anchor\": \"<工具环境>\",\n      \"status\": \"applied\"\n    }\n  ],\n  \"limitations\": [\n    \"DOCX complex objects such as text boxes, formulas, floating images, fields, comments, and tracked changes may require manual handling.\",\n    \"First-pass output only fills mapped anchors; deleting template hints must wait for user-confirmed finalize.\"\n  ]\n}",
+      "stderr": ""
+    },
+    {
+      "id": "docx-reference-boundary",
+      "ok": true,
+      "returncode": 0,
+      "source_unchanged": true,
+      "output_exists": true,
+      "content_found": true,
+      "disclaimer_first": true,
+      "stdout": "{\n  \"ok\": true,\n  \"fill_map\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-reference-boundary/fill-map.json\",\n  \"source_fill\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-reference-boundary/fill.md\",\n  \"target_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-reference-boundary/target.docx\",\n  \"output_document\": \"/private/var/folders/lw/b0dqpdfn0rzf3_10p0vct3rm0000gn/T/lab-factory-beta-smoke-1kn7fj6y/docx-reference-boundary/draft.docx\",\n  \"target_sha256\": \"ea8fa3e3e6b557d75ff8306995c668d8d26f1b23022d4ade6a9503b3d07b12f8\",\n  \"output_sha256\": \"1c6e5b7d8a9a1eb1d0f979993a9f6520152cefea5f97c2f8a3a153738288a9d3\",\n  \"operation_count\": 1,\n  \"operations\": [\n    {\n      \"id\": \"docx-reference-boundary\",\n      \"operation\": \"insert_after\",\n      \"anchor\": \"参考案例\",\n      \"status\": \"applied\"\n    }\n  ],\n  \"limitations\": [\n    \"DOCX complex objects such as text boxes, formulas, floating images, fields, comments, and tracked changes may require manual handling.\",\n    \"First-pass output only fills mapped anchors; deleting template hints must wait for user-confirmed finalize.\"\n  ]\n}",
+      "stderr": ""
+    }
+  ]
+}
+{
+  "ok": true,
+  "count": 38,
+  "failed": [],
+  "results": [
+    {
+      "name": "inventory-stories",
+      "ok": true
+    },
+    {
+      "name": "inventory-table-coordinate",
+      "ok": true
+    },
+    {
+      "name": "alternate-content-deduplicated",
+      "ok": true
+    },
+    {
+      "name": "unsupported-template-cue-manual-only",
+      "ok": true
+    },
+    {
+      "name": "placements-auto",
+      "ok": true
+    },
+    {
+      "name": "family-compatible-after-content-growth",
+      "ok": true
+    },
+    {
+      "name": "profile-drift-history",
+      "ok": true
+    },
+    {
+      "name": "container-conflict-blocked",
+      "ok": true
+    },
+    {
+      "name": "unrelated-family-rejected",
+      "ok": true
+    },
+    {
+      "name": "source-unchanged",
+      "ok": true
+    },
+    {
+      "name": "package-preservation",
+      "ok": true
+    },
+    {
+      "name": "table-writeback",
+      "ok": true
+    },
+    {
+      "name": "disclaimer-visible-at-document-start",
+      "ok": true
+    },
+    {
+      "name": "docx-semantic-golden",
+      "ok": true
+    },
+    {
+      "name": "placeholder-color-normalized",
+      "ok": true
+    },
+    {
+      "name": "insert-after-uses-body-style",
+      "ok": true
+    },
+    {
+      "name": "remaining-template-cues-audited",
+      "ok": true
+    },
+    {
+      "name": "mutation-targets-pre-resolved",
+      "ok": true
+    },
+    {
+      "name": "content-quality-gate",
+      "ok": true
+    },
+    {
+      "name": "inventory-heading-tree",
+      "ok": true
+    },
+    {
+      "name": "controlled-section-expansion",
+      "ok": true
+    },
+    {
+      "name": "section-style-level-mismatch-blocked",
+      "ok": true
+    },
+    {
+      "name": "session-state-machine",
+      "ok": true
+    },
+    {
+      "name": "optional-section-state-transition",
+      "ok": true
+    },
+    {
+      "name": "writing-profile",
+      "ok": true
+    },
+    {
+      "name": "similarity-block",
+      "ok": true
+    },
+    {
+      "name": "prior-report-analysis-extracts-profile-without-body-or-path",
+      "ok": true
+    },
+    {
+      "name": "humanization-audit-uses-clusters-and-keeps-detectors-out-of-gate",
+      "ok": true
+    },
+    {
+      "name": "cohort-collision-gate-is-private-and-distinguishes-clear-output",
+      "ok": true
+    },
+    {
+      "name": "document-structure-audit-enforces-numbered-single-placeholders-and-table-decision",
+      "ok": true
+    },
+    {
+      "name": "problem-solution-screenshot-placeholder-is-required-only-when-helpful",
+      "ok": true
+    },
+    {
+      "name": "cohort-gate-blocks-same-structure-even-when-topics-differ",
+      "ok": true
+    },
+    {
+      "name": "v1-migration",
+      "ok": true
+    },
+    {
+      "name": "skill-quality-scaffold-and-validate",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "name": "unconfirmed-spec-blocked",
+      "ok": true
+    },
+    {
+      "name": "mcp-controlled-section-expansion",
+      "ok": true
+    },
+    {
+      "name": "mcp-v2-workflow",
+      "ok": true
+    },
+    {
+      "name": "skill-update-privacy-gate",
+      "ok": true
+    }
+  ]
+}
+{
+  "ok": true,
+  "count": 18,
+  "failed": [],
+  "results": [
+    {
+      "name": "cold-start-assigns-capsule-without-blocking-preference-form",
+      "ok": true
+    },
+    {
+      "name": "format-defaults-and-sources-disclosed",
+      "ok": true
+    },
+    {
+      "name": "state-persists-object-ids-not-source-paths",
+      "ok": true
+    },
+    {
+      "name": "preflight-is-first-routine-checkpoint",
+      "ok": true
+    },
+    {
+      "name": "idempotent-confirmation-replays-token",
+      "ok": true
+    },
+    {
+      "name": "stale-state-rejected",
+      "ok": true
+    },
+    {
+      "name": "low-risk-flow-awaits-host-artifacts",
+      "ok": true
+    },
+    {
+      "name": "final-docx-is-second-routine-checkpoint",
+      "ok": true
+    },
+    {
+      "name": "normal-balanced-flow-has-exactly-two-checkpoints",
+      "ok": true
+    },
+    {
+      "name": "writer-genome-and-generation-contract-control-semantic-and-style-axes",
+      "ok": true
+    },
+    {
+      "name": "per-report-seed-varies-observable-layout-not-only-wording",
+      "ok": true
+    },
+    {
+      "name": "capsule-is-stable-per-installation-and-different-across-installations",
+      "ok": true
+    },
+    {
+      "name": "cold-start-genome-distribution-has-no-axis-collision-across-128-identities",
+      "ok": true
+    },
+    {
+      "name": "prior-report-profile-is-optional-private-and-takes-precedence",
+      "ok": true
+    },
+    {
+      "name": "low-style-confidence-triggers-two-sample-calibration",
+      "ok": true
+    },
+    {
+      "name": "low-confidence-placement-asks-user",
+      "ok": true
+    },
+    {
+      "name": "fast-mode-reserved-but-disabled",
+      "ok": true
+    },
+    {
+      "name": "legacy-session-remains-strict",
+      "ok": true
+    }
+  ]
+}
+test_audit_and_mutation_binding (__main__.NativeTests.test_audit_and_mutation_binding) ... ok
+test_balanced_native_end_to_end_and_changed_final (__main__.NativeTests.test_balanced_native_end_to_end_and_changed_final) ... ok
+test_fabricated_checks_rejected (__main__.NativeTests.test_fabricated_checks_rejected) ... ok
+test_image_hash_and_package (__main__.NativeTests.test_image_hash_and_package) ... ok
+test_invalid_native_matrix_rejected (__main__.NativeTests.test_invalid_native_matrix_rejected) ... ok
+test_invalid_prepare_does_not_consume (__main__.NativeTests.test_invalid_prepare_does_not_consume) ... ok
+test_missing_cross_reference_rejected_transactionally (__main__.NativeTests.test_missing_cross_reference_rejected_transactionally) ... ok
+test_native_table_and_preservation (__main__.NativeTests.test_native_table_and_preservation) ... ok
+test_native_table_in_template_cell (__main__.NativeTests.test_native_table_in_template_cell) ... ok
+test_pending_evidence_cannot_be_certified (__main__.NativeTests.test_pending_evidence_cannot_be_certified) ... ok
+test_same_template_and_table_do_not_count_as_authored_prose (__main__.NativeTests.test_same_template_and_table_do_not_count_as_authored_prose) ... ok
+test_structure_alone_is_notice (__main__.NativeTests.test_structure_alone_is_notice) ... ok
+test_usage_timeout_replays_same_report (__main__.NativeTests.test_usage_timeout_replays_same_report) ... ok
+
+----------------------------------------------------------------------
+Ran 13 tests in 1.010s
+
+OK

@@ -121,12 +121,12 @@
     },
     "privacy": {
       "type": "object",
-      "required": ["report_body_local_only", "sample_body_not_persisted", "cloud_style_id_only"],
+      "required": ["report_body_not_uploaded_to_license_service", "sample_body_not_persisted", "cloud_host_may_receive_selected_materials"],
       "additionalProperties": false,
       "properties": {
-        "report_body_local_only": {"const": true},
+        "report_body_not_uploaded_to_license_service": {"const": true},
         "sample_body_not_persisted": {"const": true},
-        "cloud_style_id_only": {"const": true}
+        "cloud_host_may_receive_selected_materials": {"const": true}
       }
     }
   }

@@ -15,11 +15,13 @@ SCRIPT_NAMES = (
     "inspect_lab_materials.py",
     "scaffold_subject_skill.py",
     "v2_engine.py",
+    "native_blocks.py",
     "validate_fill_map.py",
     "validate_scaffolded_skill.py",
     "validate_skill_spec.py",
 )
 ASSET_NAMES = (
+    "content-package-v3.schema.json",
     "content-package-v2.schema.json",
     "requirements-summary-v2.schema.json",
     "section-plan-v2.schema.json",
@@ -58,6 +60,7 @@ def main() -> int:
     for name in ASSET_NAMES:
         shutil.copyfile(source / "assets" / name, output / "assets" / name)
     shutil.copyfile(source / "references" / "v2-workflow.md", output / "references" / "v2-workflow.md")
+    shutil.copyfile(source / "references" / "native-media-v3.md", output / "references" / "native-media-v3.md")
     print(output)
     return 0
 

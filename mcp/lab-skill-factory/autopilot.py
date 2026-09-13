@@ -19,6 +19,9 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import artifact_store
 
 
 VERSION = "2.1"
@@ -674,7 +677,7 @@ def generation_contract(object_ids: dict[str, str]) -> dict[str, Any]:
             ],
         },
         "required_quality_gates": sorted(REQUIRED_QUALITY_GATES),
-        "privacy": {"report_body_local_only": True, "sample_body_not_persisted": True, "cloud_style_id_only": True},
+        "privacy": {"report_body_not_uploaded_to_license_service": True, "sample_body_not_persisted": True, "cloud_host_may_receive_selected_materials": True},
     }
 
 
@@ -819,15 +822,18 @@ def prepare(workspace: Path, idempotency_key: str, subject: str, mode: str,
             "preferences": "preferences-v1", "format_summary": "format-v1",
             "writer_genome": "writer-genome-v3", "variation_contract": "variation-v3",
             "generation_contract": "generation-contract-v3", "interaction_plan": "",
+            "requirements": "requirements-v1", "template_profile": "template-profile-v1",
         }
         if style_card:
             object_ids["style_card"] = "style-card-v1"
         if personal_profile:
             object_ids["personal_profile"] = "personal-profile-v1"
+        atomic_write_json(object_path(workspace, object_ids["requirements"]), requirements)
+        atomic_write_json(object_path(workspace, object_ids["template_profile"]), template)
         host_contract = generation_contract(object_ids)
         state = {
             "version": VERSION, "session_id": "s_" + uuid.uuid4().hex[:16],
-            "report_id": "r_" + uuid.uuid4().hex[:12], "subject": subject,
+            "report_id": "report_" + uuid.UUID(key).hex, "subject": subject,
             "state_version": 1, "state": "materials_scanned",
             "orchestration_state": "collecting_preferences" if questions else "preflight_pending",
             "orchestration_mode": mode, "current_checkpoint": None if questions else "preflight",
@@ -976,6 +982,10 @@ def confirm_checkpoint(workspace: Path, state_version: int, idempotency_key: str
             raise AutopilotError("INVALID_TRANSITION", "当前状态不能确认 preflight。")
         if checkpoint_id == "final_review" and state["orchestration_state"] != "final_review_pending":
             raise AutopilotError("INVALID_TRANSITION", "当前状态不能确认 final review。")
+        if checkpoint_id == "final_review":
+            summary = checkpoint["summary"]
+            try: artifact_store.verify(workspace, summary["artifact_id"], summary["sha256"], require_audit=True)
+            except artifact_store.ArtifactError as exc: raise AutopilotError("ARTIFACT_CHANGED", str(exc)) from exc
         token = secrets.token_urlsafe(32)
         state["state_version"] += 1
         state["active_confirmation"] = {
@@ -1028,93 +1038,32 @@ def host_artifact_plan(state: dict[str, Any], reason_code: str = "CONTENT_PACKAG
         "next_action": "await_host_artifact",
         "reason_code": reason_code,
         "required_artifacts": [
-            "placement", "content_package_ready", "fact_ledger", "draft",
-            "humanization_audit", "layout_audit", "diversity_report", "quality_gates",
+            "placement", "content_package_ready", "draft",
         ],
         "required_object_ids": {
             key: state["object_ids"][key]
-            for key in ("preferences", "writer_genome", "variation_contract", "generation_contract")
+            for key in ("preferences", "writer_genome", "variation_contract", "generation_contract", "requirements", "template_profile") if key in state["object_ids"]
         },
         "host_generation_sequence": [
             "read_required_objects", "build_fact_ledger", "plan_layout_and_caption_registry",
             "plan_before_prose", "draft", "identity_conditioned_humanization",
-            "run_layout_caption_and_diversity_gates", "run_deterministic_gates",
+            "lab_factory_v3_import_asset_when_needed", "lab_factory_v3_apply_draft",
+            "lab_factory_v3_verify_draft", "submit_returned_draft_receipt",
         ],
     }
 
 
-def validated_quality_gates(artifacts: dict[str, Any]) -> dict[str, Any] | None:
+def validated_quality_gates(artifacts: dict[str, Any], workspace: Path | None = None) -> dict[str, Any] | None:
     draft = artifacts.get("draft")
     gates = artifacts.get("quality_gates")
     if not isinstance(draft, dict):
         return gates if isinstance(gates, dict) else None
-    if not isinstance(gates, dict):
-        return {"status": "retryable_failure", "reason": "缺少结构化 quality_gates。"}
-    if gates.get("status") in {"retryable_failure", "hard_failure"}:
-        return gates
-    passed = gates.get("passed_gate_ids")
-    if not isinstance(passed, list) or not all(isinstance(item, str) for item in passed):
-        return {"status": "retryable_failure", "reason": "quality_gates 缺少 passed_gate_ids。"}
-    missing_gates = sorted(REQUIRED_QUALITY_GATES - set(passed))
-    if missing_gates:
-        return {
-            "status": "retryable_failure",
-            "reason": "以下质量门禁尚未提供通过证据：" + "、".join(missing_gates),
-            "missing_gate_ids": missing_gates,
-        }
-    fact_ledger = artifacts.get("fact_ledger")
-    if not (
-        isinstance(fact_ledger, dict)
-        and isinstance(fact_ledger.get("object_id"), str)
-        and re.fullmatch(r"[0-9a-f]{64}", str(fact_ledger.get("sha256", "")))
-        and fact_ledger.get("stores_report_body") is False
-    ):
-        return {"status": "retryable_failure", "reason": "fact_ledger 缺少对象 ID、哈希或隐私声明。"}
-    humanization = artifacts.get("humanization_audit")
-    if not isinstance(humanization, dict) or humanization.get("status") != "pass":
-        return {"status": "retryable_failure", "reason": "去 AI 模板腔审计尚未通过。"}
-    layout = artifacts.get("layout_audit")
-    if not (
-        isinstance(layout, dict)
-        and layout.get("status") == "pass"
-        and isinstance(layout.get("structure_fingerprint"), dict)
-        and layout.get("caption_cross_reference_ok") is True
-        and layout.get("single_asset_per_placeholder_ok") is True
-        and layout.get("table_decision_recorded") is True
-        and layout.get("problem_evidence_decision_recorded") is True
-        and layout.get("unresolved_template_cues") == []
-    ):
-        return {
-            "status": "retryable_failure",
-            "reason": "结构、图表编号/交叉引用、表格取舍或问题证据占位审计尚未通过。",
-        }
-    diversity = artifacts.get("diversity_report")
-    if not isinstance(diversity, dict):
-        return {"status": "retryable_failure", "reason": "缺少本机历史或批次差异报告。"}
-    coverage = diversity.get("coverage")
-    if not (
-        isinstance(coverage, dict)
-        and coverage.get("status") in {"evaluated", "baseline_unavailable"}
-        and isinstance(coverage.get("comparison_count"), int)
-        and coverage.get("comparison_count") >= 0
-    ):
-        return {"status": "retryable_failure", "reason": "跨报告差异报告缺少真实覆盖范围。"}
-    expected_claim = (
-        "collision_checked_against_available_baseline"
-        if coverage["status"] == "evaluated"
-        else "no_baseline_so_cross_report_difference_not_proven"
-    )
-    if (
-        (coverage["status"] == "evaluated" and coverage["comparison_count"] < 1)
-        or (coverage["status"] == "baseline_unavailable" and coverage["comparison_count"] != 0)
-        or coverage.get("claim_boundary") != expected_claim
-    ):
-        return {"status": "retryable_failure", "reason": "跨报告差异报告的覆盖状态与比较数量不一致。"}
-    if diversity.get("gate") == "blocked":
-        return {"status": "hard_failure", "reason": "跨报告碰撞门禁命中，必须换内容组织后重新生成。"}
-    if diversity.get("gate") != "pass":
-        return {"status": "retryable_failure", "reason": "跨报告差异报告尚未通过。"}
-    return dict(gates, status="pass")
+    try:
+        if workspace is None: raise artifact_store.ArtifactError("缺少本地工作区")
+        record = artifact_store.verify(workspace, draft.get("object_id"), draft.get("sha256"), require_audit=True)
+        return {"status": "pass", "local_audit": record["audit"]}
+    except (artifact_store.ArtifactError, KeyError, TypeError) as exc:
+        return {"status": "retryable_failure", "reason": str(exc)}
 
 
 def advance(workspace: Path, state_version: int, idempotency_key: str,
@@ -1190,7 +1139,7 @@ def advance(workspace: Path, state_version: int, idempotency_key: str,
                         plan_data = {"questions": [], "checkpoint": None, "exceptions": [detail],
                                      "next_action": "blocked", "reason_code": "PLACEMENT_BLOCKED"}
                 else:
-                    gates = validated_quality_gates(artifacts)
+                    gates = validated_quality_gates(artifacts, workspace)
                     if isinstance(gates, dict) and gates.get("status") == "retryable_failure":
                         state["repair_attempts"] += 1
                         if state["repair_attempts"] <= 2:
@@ -1221,9 +1170,9 @@ def advance(workspace: Path, state_version: int, idempotency_key: str,
                         final_summary = {
                             "artifact_id": draft["object_id"], "sha256": draft["sha256"],
                             "writer_capsule_id": state["style_capsule_id"],
-                            "humanization_status": artifacts["humanization_audit"]["status"],
-                            "cross_report_diversity_gate": artifacts["diversity_report"]["gate"],
-                            "cross_report_coverage": artifacts["diversity_report"]["coverage"],
+                            "humanization_status": gates["local_audit"]["humanization"]["status"],
+                            "cross_report_diversity_gate": gates["local_audit"]["diversity"]["gate"],
+                            "cross_report_coverage": gates["local_audit"]["diversity"]["coverage"],
                             "assumptions": artifacts.get("assumptions", []),
                             "warnings": artifacts.get("warnings", []),
                             "wps_review_checklist": draft.get("wps_review_checklist", ["写入位置", "分页与行距", "图片和公式位置"]),
@@ -1253,6 +1202,9 @@ def advance(workspace: Path, state_version: int, idempotency_key: str,
             consume_confirmation(state, confirmation_token, "final_review")
             action = artifacts.get("action")
             if action == "accept":
+                summary = current_plan(workspace, state)["checkpoint"]["summary"]
+                try: artifact_store.verify(workspace, summary["artifact_id"], summary["sha256"], require_audit=True)
+                except artifact_store.ArtifactError as exc: raise AutopilotError("ARTIFACT_CHANGED", str(exc)) from exc
                 state["orchestration_state"] = "finalized"
                 state["state"] = "finalized"
                 state["current_checkpoint"] = None

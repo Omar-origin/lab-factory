@@ -1,0 +1,60 @@
+{
+  "distinct_prose_same_shape": {
+    "gate": "blocked",
+    "findings": [
+      {
+        "comparison_id": "report_0a666111a486af89",
+        "blocked": true,
+        "longest_common_length": 2,
+        "similar_sentence_count": 0,
+        "generated_5gram_overlap": 0.0,
+        "style_fingerprint_distance": 0.0596,
+        "style_distance_notice": true,
+        "structure_flow_similarity": 1.0,
+        "structure_count_similarity": 1.0,
+        "structural_collision": true
+      }
+    ]
+  },
+  "real_table_rejected": {
+    "status": "retryable_failure",
+    "evidence_counts": {
+      "numbered_figures": 0,
+      "numbered_tables": 0,
+      "unnumbered_placeholders": 0
+    },
+    "table_required_by_content": true,
+    "table_decision_recorded": false,
+    "failures": [
+      "存在适合行列表达的内容，但没有编号表格或表格占位"
+    ]
+  },
+  "unfilled_evidence_layout_pass": {
+    "status": "pass",
+    "failures": [],
+    "evidence_counts": {
+      "numbered_figures": 1,
+      "numbered_tables": 0,
+      "unnumbered_placeholders": 0
+    }
+  },
+  "unbound_quality_attestation": {
+    "status": "pass",
+    "passed_gate_ids": [
+      "anti_copy",
+      "caption_cross_reference",
+      "cross_report_collision",
+      "evidence_placeholder_balance",
+      "fact_integrity",
+      "humanization",
+      "source_coverage",
+      "structure_diversity",
+      "student_identity",
+      "style_application"
+    ]
+  },
+  "nonexistent_doc_advance": {
+    "state": "final_review_pending",
+    "reason": "FINAL_REVIEW_READY"
+  }
+}

@@ -44,6 +44,9 @@ jobs:
       - name: Test v2.1 report autopilot
         run: python mcp/lab-skill-factory/scripts/run_autopilot_tests.py
 
+      - name: Test native media and file-bound quality gates
+        run: python mcp/lab-skill-factory/scripts/run_native_tests.py
+
       - name: Test installer and activation
         run: python mcp/lab-skill-factory/scripts/test_install_and_activation.py
 

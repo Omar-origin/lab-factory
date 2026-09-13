@@ -1,0 +1,152 @@
+[
+  {
+    "file": "实验六-软件详细设计二-新版变体04-思源笔记课程知识库.docx",
+    "structure_status": "retryable_failure",
+    "failures": [
+      "仍有正文或目录结构占位提示"
+    ],
+    "unresolved": [
+      "2.2.1 XXX功能/模块精细化类图6",
+      "2.2.2 XXX功能/模块精细化类图6",
+      "2.2.3 XXX功能/模块精细化类图6"
+    ],
+    "counts": {
+      "numbered_figures": 4,
+      "numbered_tables": 2,
+      "unnumbered_placeholders": 0
+    },
+    "humanization": "pass",
+    "humanization_patterns": [
+      {
+        "id": "formulaic_connectors",
+        "count": 1,
+        "severity": "notice"
+      }
+    ],
+    "cohort_gate_without_whitelist": "blocked",
+    "comparisons": [
+      {
+        "comparison_id": "report_d269cd735519f384",
+        "blocked": true,
+        "longest_common_length": 489,
+        "similar_sentence_count": 10,
+        "generated_5gram_overlap": 0.3903,
+        "style_fingerprint_distance": 0.0212,
+        "style_distance_notice": true,
+        "structure_flow_similarity": 0.8116,
+        "structure_count_similarity": 0.7607,
+        "structural_collision": false
+      },
+      {
+        "comparison_id": "report_37e8988a1ccfd957",
+        "blocked": true,
+        "longest_common_length": 489,
+        "similar_sentence_count": 10,
+        "generated_5gram_overlap": 0.3541,
+        "style_fingerprint_distance": 0.0275,
+        "style_distance_notice": true,
+        "structure_flow_similarity": 0.8235,
+        "structure_count_similarity": 0.7188,
+        "structural_collision": false
+      }
+    ]
+  },
+  {
+    "file": "实验六-软件详细设计二-新版变体05-思源笔记个人资料库.docx",
+    "structure_status": "retryable_failure",
+    "failures": [
+      "仍有正文或目录结构占位提示"
+    ],
+    "unresolved": [
+      "2.2.1 XXX功能/模块精细化类图6",
+      "2.2.2 XXX功能/模块精细化类图6",
+      "2.2.3 XXX功能/模块精细化类图6"
+    ],
+    "counts": {
+      "numbered_figures": 5,
+      "numbered_tables": 5,
+      "unnumbered_placeholders": 0
+    },
+    "humanization": "pass",
+    "humanization_patterns": [],
+    "cohort_gate_without_whitelist": "blocked",
+    "comparisons": [
+      {
+        "comparison_id": "report_2fdae21818536457",
+        "blocked": true,
+        "longest_common_length": 489,
+        "similar_sentence_count": 10,
+        "generated_5gram_overlap": 0.3788,
+        "style_fingerprint_distance": 0.0212,
+        "style_distance_notice": true,
+        "structure_flow_similarity": 0.7826,
+        "structure_count_similarity": 0.7607,
+        "structural_collision": false
+      },
+      {
+        "comparison_id": "report_37e8988a1ccfd957",
+        "blocked": true,
+        "longest_common_length": 489,
+        "similar_sentence_count": 10,
+        "generated_5gram_overlap": 0.3506,
+        "style_fingerprint_distance": 0.0291,
+        "style_distance_notice": true,
+        "structure_flow_similarity": 0.6849,
+        "structure_count_similarity": 0.8964,
+        "structural_collision": false
+      }
+    ]
+  },
+  {
+    "file": "实验六-软件详细设计二-新版变体06-思源笔记科研阅读台.docx",
+    "structure_status": "retryable_failure",
+    "failures": [
+      "仍有正文或目录结构占位提示"
+    ],
+    "unresolved": [
+      "2.2.1 XXX功能/模块精细化类图6",
+      "2.2.2 XXX功能/模块精细化类图6",
+      "2.2.3 XXX功能/模块精细化类图6"
+    ],
+    "counts": {
+      "numbered_figures": 5,
+      "numbered_tables": 5,
+      "unnumbered_placeholders": 0
+    },
+    "humanization": "pass",
+    "humanization_patterns": [
+      {
+        "id": "formulaic_connectors",
+        "count": 1,
+        "severity": "notice"
+      }
+    ],
+    "cohort_gate_without_whitelist": "blocked",
+    "comparisons": [
+      {
+        "comparison_id": "report_2fdae21818536457",
+        "blocked": true,
+        "longest_common_length": 489,
+        "similar_sentence_count": 10,
+        "generated_5gram_overlap": 0.3778,
+        "style_fingerprint_distance": 0.0275,
+        "style_distance_notice": true,
+        "structure_flow_similarity": 0.8235,
+        "structure_count_similarity": 0.7188,
+        "structural_collision": false
+      },
+      {
+        "comparison_id": "report_d269cd735519f384",
+        "blocked": true,
+        "longest_common_length": 489,
+        "similar_sentence_count": 10,
+        "generated_5gram_overlap": 0.3856,
+        "style_fingerprint_distance": 0.0291,
+        "style_distance_notice": true,
+        "structure_flow_similarity": 0.6575,
+        "structure_count_similarity": 0.8964,
+        "structural_collision": false
+      }
+    ]
+  }
+]

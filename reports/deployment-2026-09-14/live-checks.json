@@ -1,0 +1,85 @@
+{
+  "ok": true,
+  "checks": [
+    {
+      "path": "/",
+      "status": 200,
+      "final_url": "https://lab.elyther.top/showcase",
+      "ok": true
+    },
+    {
+      "path": "/health",
+      "status": 200,
+      "final_url": "https://lab.elyther.top/health",
+      "ok": true
+    },
+    {
+      "path": "/api/checkout/config",
+      "status": 200,
+      "final_url": "https://lab.elyther.top/api/checkout/config",
+      "ok": true
+    },
+    {
+      "path": "/api/dashboard",
+      "status": 401,
+      "final_url": "https://lab.elyther.top/api/dashboard",
+      "ok": true
+    },
+    {
+      "path": "/docs",
+      "status": 200,
+      "final_url": "https://lab.elyther.top/docs",
+      "sha256": "14ce64d55a0c0d7517b5597ffae00a2de77fe129b4e96203e5be0ebe05989854",
+      "ok": true
+    },
+    {
+      "path": "/showcase",
+      "status": 200,
+      "final_url": "https://lab.elyther.top/showcase",
+      "sha256": "0c933605dbe62fc407c8d1c9bd1de01ce4ff598e5e626b231285d94799665edf",
+      "ok": true
+    },
+    {
+      "path": "/plans",
+      "status": 200,
+      "final_url": "https://lab.elyther.top/plans",
+      "sha256": "78f33671adfd648c982fcdd891f342b220ea5ca08381f0c275c741f92648f675",
+      "ok": true
+    },
+    {
+      "path": "/plans/plans.js",
+      "status": 200,
+      "final_url": "https://lab.elyther.top/plans/plans.js",
+      "sha256": "4a3333ec5d9410e7630323d7ef159d78958753704467a8f0724030b1907af92e",
+      "ok": true
+    },
+    {
+      "path": "/assets/portal.css",
+      "status": 200,
+      "final_url": "https://lab.elyther.top/assets/portal.css",
+      "sha256": "d922efed5a3d0a699b07b3628300bec34569abdf62684d187eca92f60a9fb4f0",
+      "ok": true
+    },
+    {
+      "path": "/examples/native-report.docx",
+      "status": 200,
+      "final_url": "https://lab.elyther.top/examples/native-report.docx",
+      "sha256": "2e1ece11bfc77579d06105000f5d589e36f7da883b85c77ef6a0360694714c25",
+      "ok": true
+    },
+    {
+      "path": "/examples/native-template.docx",
+      "status": 200,
+      "final_url": "https://lab.elyther.top/examples/native-template.docx",
+      "sha256": "1dfb647d972e9832126ba13139ae52bce520234f6297216f1944bde2488a638f",
+      "ok": true
+    },
+    {
+      "path": "/payment-assets/alipay.png",
+      "status": 200,
+      "final_url": "https://lab.elyther.top/payment-assets/alipay.png",
+      "sha256": "e3f95869957337fa4b3b8c7ef01b80f62d5ae42a04ad12d0d5dc16311bca800a",
+      "ok": true
+    }
+  ]
+}

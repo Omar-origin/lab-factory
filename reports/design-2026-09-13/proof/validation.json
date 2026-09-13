@@ -1,0 +1,47 @@
+{
+  "native_tables": 1,
+  "native_cells": 12,
+  "inline_images": 1,
+  "image_matches_real_screenshot": true,
+  "first_row_top_sizes": [
+    "12",
+    "12",
+    "12"
+  ],
+  "header_bottom_sizes": [
+    "4",
+    "4",
+    "4"
+  ],
+  "last_row_bottom_sizes": [
+    "12",
+    "12",
+    "12"
+  ],
+  "vertical_lines": [
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none"
+  ]
+}

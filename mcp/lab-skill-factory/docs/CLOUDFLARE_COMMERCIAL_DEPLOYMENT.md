@@ -8,7 +8,7 @@
 - 客户端中控：`https://lab.elyther.top`
 - 应急 Worker 地址：`https://lab-factory-commercial.elyther-top.workers.dev`
 
-2026-08-27 已完成远程 D1 `0003`–`0007` 迁移与正式 Worker 发布；Brevo 发件人 `no-reply@mail.elyther.top` 和 Turnstile 生产 Widget 已启用。注册与登录已拆分，密码先经服务端 HMAC pepper，再使用账号独立随机盐和 100,000 次 PBKDF2-SHA256 保存。账号中控采用 `owner`、`distributor_admin` 和 `user` 三层角色，管理员邀请、角色变更、密钥与订单操作均有服务端权限边界。当前线上版本 ID 为 `627d9af2-ec81-4e97-997d-220b376dbdd2`。`0008_new_user_upgrade_discount.sql` 及对应 Worker 代码已完成本地验证，正式环境仍需先应用该迁移再部署新版 Worker。
+2026-08-27 已完成远程 D1 `0003`–`0007` 迁移与正式 Worker 发布；Brevo 发件人 `no-reply@mail.elyther.top` 和 Turnstile 生产 Widget 已启用。注册与登录已拆分，密码先经服务端 HMAC pepper，再使用账号独立随机盐和 100,000 次 PBKDF2-SHA256 保存。账号中控采用 `owner`、`distributor_admin` 和 `user` 三层角色，管理员邀请、角色变更、密钥与订单操作均有服务端权限边界。2026-09-14 已应用 `0008_new_user_upgrade_discount.sql` 并发布网站改进；当前线上版本 ID 为 `f5b5fb5d-4f48-48df-9a1a-1a10e01d2eda`。部署后 12 项只读验收通过，远程无待应用迁移。详细记录见仓库 `reports/deployment-2026-09-14/`。
 
 Cloudflare 项目位于 `mcp/lab-skill-factory/cloudflare/`，采用 Workers Static Assets + D1 + Workers Secrets。线上 D1 数据库为 `lab-factory-commercial`，ID 为 `4c794e72-7514-487b-b143-dc42f1c3fccf`。
 
