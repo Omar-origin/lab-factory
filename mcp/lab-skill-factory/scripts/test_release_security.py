@@ -49,7 +49,7 @@ def archive_files(binary: Path) -> set[str]:
     check(result.returncode == 0, f"cannot inspect PyInstaller archive: {result.stderr[-500:]}")
     found = set()
     for line in result.stdout.splitlines():
-        match = re.search(r"'((?:skills[\\/]lab-skill-factory)[\\/][^']+)'", line)
+        match = re.search(r"[\"']?(skills[\\/]lab-skill-factory[\\/][^\"'\s]+)", line)
         if match:
             found.add(match.group(1).replace("\\", "/"))
     return found
