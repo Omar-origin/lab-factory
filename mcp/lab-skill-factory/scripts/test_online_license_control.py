@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 import base64
+from contextlib import closing
 import sqlite3
 import sys
 import tempfile
@@ -151,7 +152,7 @@ def main() -> int:
         tests += 1
         check(order_status == 201 and order_created["order"]["status"] == "payment_pending" and order_created["order"]["plan"] == "experience", "public experience order creation failed")
         order_token = order_created["status_token"]
-        with sqlite3.connect(root / "control.sqlite3") as conn:
+        with closing(sqlite3.connect(root / "control.sqlite3")) as conn:
             serialized_orders = " ".join(str(value) for row in conn.execute("select * from orders") for value in row)
         check(order_token not in serialized_orders, "raw order token was stored in SQLite")
 
@@ -245,7 +246,7 @@ def main() -> int:
         tests += 1
         check(activation_key.startswith("LF-") and activation_key.endswith(created["key"]["key_suffix"]), "key generation failed")
 
-        with sqlite3.connect(root / "control.sqlite3") as conn:
+        with closing(sqlite3.connect(root / "control.sqlite3")) as conn:
             serialized = " ".join(str(value) for row in conn.execute("select * from license_keys") for value in row)
         tests += 1
         check(activation_key not in serialized, "raw activation key was stored in SQLite")
