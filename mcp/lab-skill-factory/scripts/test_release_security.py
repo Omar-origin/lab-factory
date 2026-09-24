@@ -6,11 +6,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from PyInstaller.archive.readers import CArchiveReader
 
 
 RUNTIME_FILES = {
@@ -45,14 +45,12 @@ def check(condition: bool, message: str) -> None:
 
 
 def archive_files(binary: Path) -> set[str]:
-    result = run([sys.executable, "-m", "PyInstaller.utils.cliutils.archive_viewer", "-l", str(binary)])
-    check(result.returncode == 0, f"cannot inspect PyInstaller archive: {result.stderr[-500:]}")
-    found = set()
-    for line in result.stdout.splitlines():
-        match = re.search(r"[\"']?(skills[\\/]lab-skill-factory[\\/][^\"'\s]+)", line)
-        if match:
-            found.add(match.group(1).replace("\\", "/"))
-    return found
+    archive = CArchiveReader(str(binary))
+    return {
+        name.replace("\\", "/")
+        for name in archive.toc
+        if name.replace("\\", "/").startswith("skills/lab-skill-factory/")
+    }
 
 
 def main() -> int:
