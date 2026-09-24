@@ -1067,7 +1067,7 @@ async function recordPageView(request: Request, env: Env): Promise<Response> {
   ensureSameOrigin(request, env);
   const input = await body(request);
   const routeName = text(input.route, "route", 80, true).split("?")[0];
-  const allowed = new Set(["/login","/register","/dashboard","/plans","/referrals","/showcase","/docs","/account","/orders"]);
+  const allowed = new Set(["/login","/register","/dashboard","/plans","/referrals","/showcase","/download","/docs","/account","/orders"]);
   if (!allowed.has(routeName)) throw new HttpError(400, "INVALID_ROUTE", "unknown metric route");
   const date = nowIso().slice(0, 10);
   const identity = `${request.headers.get("CF-Connecting-IP") || "local"}:${request.headers.get("User-Agent") || "unknown"}`;
@@ -1497,7 +1497,7 @@ async function purgePersonalData(request: Request, env: Env): Promise<Response> 
 async function staticAsset(request: Request, env: Env, pathname: string): Promise<Response> {
   const url = new URL(request.url);
   if (pathname === "/" || pathname === "/index.html") return Response.redirect(`${url.origin}/showcase`, 302);
-  const portalRoutes = new Set(["login", "register", "dashboard", "plans", "referrals", "showcase", "docs", "account", "orders"]);
+  const portalRoutes = new Set(["login", "register", "dashboard", "plans", "referrals", "showcase", "download", "docs", "account", "orders"]);
   const portalName = pathname.replace(/^\//, "").replace(/\/$/, "");
   if (portalRoutes.has(portalName)) url.pathname = `/${portalName}/index.html`;
   if (pathname === "/buy" || pathname === "/buy/" || pathname === "/buy/index.html") return Response.redirect(`${url.origin}/plans`, 302);

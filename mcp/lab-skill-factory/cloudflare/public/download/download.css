@@ -1,0 +1,37 @@
+.download-page { max-width: 1160px; }
+.download-intro { align-items: end; margin-bottom: 28px; }
+.download-intro h1 { max-width: 780px; }
+.download-intro > div > p:last-child { max-width: 750px; }
+.download-cards { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 18px; }
+.download-card { min-height: 315px; padding: 25px; }
+.download-card-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 28px; }
+.platform-mark { display: grid; place-items: center; width: 54px; height: 48px; border: 1px solid rgba(62,209,176,.35); border-radius: 12px; background: var(--accent-soft); color: var(--accent); font: 750 12px/1 "IBM Plex Mono",monospace; letter-spacing: .08em; }
+.platform-mark.apple { color: #e1eae5; border-color: var(--line-bright); background: var(--surface-3); }
+.download-card h2 { margin: 0 0 9px; font-size: 25px; }
+.download-copy { min-height: 52px; margin-bottom: 19px; color: var(--muted); line-height: 1.7; }
+.download-actions { align-items: center; flex-wrap: wrap; gap: 13px 18px; }
+.text-link,.checksum a,.release-footer a { color: var(--accent); }
+.text-link { font-size: 13px; }
+.checksum { margin: 20px 0 0; color: var(--dim); font-size: 12px; }
+.agent-instructions { margin-top: 20px; padding: 28px; }
+.agent-instructions h2,.compatibility-card h2 { margin: 0 0 19px; font-size: 22px; }
+.install-steps { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 17px; padding: 0; margin: 0; list-style: none; counter-reset: install; }
+.install-steps li { display: grid; align-content: start; gap: 8px; padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.018); counter-increment: install; }
+.install-steps li::before { content: "0" counter(install); color: var(--accent); font: 700 11px/1 "IBM Plex Mono",monospace; letter-spacing: .12em; }
+.install-steps strong { font-size: 14px; }
+.install-steps span { color: var(--muted); font-size: 12px; line-height: 1.7; }
+.prompt-box { margin-top: 18px; padding: 17px 19px; border-left: 2px solid var(--accent); border-radius: 0 10px 10px 0; background: rgba(62,209,176,.055); }
+.prompt-box > span { color: var(--accent); font: 650 10px/1.4 "IBM Plex Mono",monospace; letter-spacing: .14em; text-transform: uppercase; }
+.prompt-box p { margin: 8px 0 0; color: #d7e2dc; font-size: 13px; line-height: 1.8; }
+.compatibility-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 20px; }
+.compatibility-card { padding: 24px; }
+.compatibility-card ul { display: grid; gap: 10px; padding-left: 19px; margin: 0; color: var(--muted); font-size: 13px; line-height: 1.7; }
+.compatibility-card li::marker { color: var(--accent); }
+.compatibility-card li strong { color: var(--ink); }
+.compatibility-card p:not(.eyebrow) { color: var(--muted); font-size: 13px; line-height: 1.75; }
+.compatibility-card p:last-child { margin-bottom: 0; }
+.safety-card { border-color: rgba(231,187,104,.25); }
+.safety-card .eyebrow { color: var(--warning); }
+.release-footer { padding: 20px 2px 0; color: var(--dim); font-size: 11px; line-height: 1.8; }
+.release-footer code { color: #b7c5bd; }
+@media (max-width: 760px) { .download-cards,.compatibility-grid { grid-template-columns: 1fr; } .install-steps { grid-template-columns: 1fr; } .download-card { min-height: 0; } }

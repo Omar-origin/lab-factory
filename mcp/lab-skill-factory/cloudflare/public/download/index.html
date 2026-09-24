@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#080b09">
+  <meta name="description" content="下载 Lab Factory Windows 和 macOS Agent 安装包，把 ZIP 交给可操作本机的 AI Agent 完成安装。">
+  <title>下载安装 · Lab Factory</title>
+  <link rel="stylesheet" href="/assets/portal.css">
+  <link rel="stylesheet" href="/download/download.css">
+</head>
+<body data-shell="download">
+  <a class="skip-link" href="#main">跳到主要内容</a>
+  <header class="app-header"><div class="nav-shell">
+    <a class="brand" href="/showcase"><span class="brand-mark">LF</span><span>LAB FACTORY<small>AGENT INSTALL</small></span></a>
+    <nav id="mainNav" class="main-nav" aria-label="主导航">
+      <a class="nav-link" data-route="dashboard" href="/dashboard"><span class="nav-glyph">⌂</span>我的面板</a>
+      <a class="nav-link" data-route="plans" href="/plans"><span class="nav-glyph">◇</span>购买套餐</a>
+      <a class="nav-link" data-route="referrals" href="/referrals"><span class="nav-glyph">∞</span>邀请返佣</a>
+      <a class="nav-link" data-route="showcase" href="/showcase"><span class="nav-glyph">▱</span>成果案例</a>
+      <a class="nav-link active" data-route="download" href="/download"><span class="nav-glyph">↓</span>下载安装</a>
+      <a class="nav-link" data-route="docs" href="/docs"><span class="nav-glyph">?</span>使用文档</a>
+    </nav>
+    <div class="header-actions"><a class="account-chip" href="/account"><span class="account-dot" data-user-initial>L</span><span data-user-email>登录账号</span></a><button id="menuButton" class="menu-button" aria-label="打开菜单">☰</button></div>
+  </div></header>
+
+  <main id="main" class="page download-page">
+    <header class="page-intro download-intro">
+      <div>
+        <p class="eyebrow">BETA 37 / AGENT-READY BUNDLES</p>
+        <h1>把安装包交给 Agent，<br>让它帮你接好本地工具</h1>
+        <p>选对应系统的 ZIP，把文件导入一个能读取文件、运行本机命令并配置 MCP 的 Agent，然后对它说：“请按包内 INSTALL_FOR_AGENT.md 为我安装 Lab Factory。”</p>
+      </div>
+      <a class="button" href="https://github.com/Omar-origin/lab-factory/releases/tag/v1.0.0-beta.37" target="_blank" rel="noopener">查看 GitHub Release ↗</a>
+    </header>
+
+    <section class="download-cards" aria-label="按操作系统下载">
+      <article class="card download-card">
+        <div class="download-card-top"><span class="platform-mark">WIN</span><span class="status warn">Windows x64 · Beta</span></div>
+        <p class="eyebrow">WINDOWS / X64</p>
+        <h2>Windows 安装包</h2>
+        <p class="download-copy">Agent ZIP 内含安装说明和 Windows 安装器。安装器按当前用户安装，不需要管理员权限。</p>
+        <div class="action-row download-actions">
+          <a class="button primary" href="https://github.com/Omar-origin/lab-factory/releases/download/v1.0.0-beta.37/LabFactory-1.0.0-beta.37-windows-x64-agent.zip">下载 Windows Agent ZIP</a>
+          <a class="text-link" href="https://github.com/Omar-origin/lab-factory/releases/download/v1.0.0-beta.37/LabFactory-1.0.0-beta.37-Setup.exe">只下载独立安装器</a>
+        </div>
+        <p class="checksum"><a href="https://github.com/Omar-origin/lab-factory/releases/download/v1.0.0-beta.37/SHA256SUMS.txt">下载 SHA-256 校验清单</a>，核对 ZIP 和独立安装器。</p>
+      </article>
+
+      <article class="card download-card">
+        <div class="download-card-top"><span class="platform-mark apple">MAC</span><span class="status warn">Apple Silicon · Beta</span></div>
+        <p class="eyebrow">MACOS / ARM64</p>
+        <h2>macOS 安装包</h2>
+        <p class="download-copy">适用于 Apple Silicon（M1/M2/M3/M4）。Agent 会把程序复制到用户目录，再连接你选择的 MCP 宿主。</p>
+        <div class="action-row download-actions">
+          <a class="button primary" href="https://github.com/Omar-origin/lab-factory/releases/download/v1.0.0-beta.37/LabFactory-1.0.0-beta.37-macos-arm64-agent.zip">下载 macOS Agent ZIP</a>
+          <a class="text-link" href="https://github.com/Omar-origin/lab-factory/releases/tag/v1.0.0-beta.37">版本说明 ↗</a>
+        </div>
+        <p class="checksum"><a href="https://github.com/Omar-origin/lab-factory/releases/download/v1.0.0-beta.37/SHA256SUMS.txt">下载 SHA-256 校验清单</a>，核对 ZIP。</p>
+      </article>
+    </section>
+
+    <section class="card agent-instructions">
+      <p class="eyebrow">THREE STEPS</p>
+      <h2>从 ZIP 到宿主里的 Lab Factory</h2>
+      <ol class="install-steps">
+        <li><strong>选择系统并校验</strong><span>下载对应 ZIP 和 SHA-256 清单。校验不匹配就停止，不运行包内文件。</span></li>
+        <li><strong>把 ZIP 导入本机 Agent</strong><span>给它读取压缩包、执行本机命令、写入你选择的 MCP 配置的权限。</span></li>
+        <li><strong>告诉 Agent 按说明安装</strong><span>它会按包内步骤安装、保留其他 MCP 配置、运行诊断并告诉你是否需要重启宿主。</span></li>
+      </ol>
+      <div class="prompt-box"><span>可以直接对 Agent 说</span><p>请先阅读这个 ZIP 根目录里的 INSTALL_FOR_AGENT.md，按其中步骤为我安装 Lab Factory。安装前核对 SHA-256；只修改我实际使用的 MCP 宿主配置，保留其他服务器；完成后运行诊断并告诉我如何重启宿主。不要索要或代填授权密钥。</p></div>
+    </section>
+
+    <section class="compatibility-grid">
+      <article class="card compatibility-card"><p class="eyebrow">CLIENT SETUP</p><h2>不同 Agent 的连接方式</h2><ul><li><strong>Codex、Claude Code：</strong>命令可自动合并 MCP 配置。</li><li><strong>WorkBuddy、Kimi：</strong>按宿主提供的 stdio MCP 配置格式合并；具体配置入口由你当前的 Agent 版本决定。</li><li><strong>DeepSeek 等模型：</strong>模型本身不等于本地 Agent；需要运行在能访问本机文件和 stdio MCP 的宿主中。</li></ul></article>
+      <article class="card compatibility-card safety-card"><p class="eyebrow">BETA / SIGNING</p><h2>首次运行前请留意</h2><p>这批 Beta 构建尚未使用 Windows 代码签名证书或 Apple Developer ID 签名/公证。Windows 可能显示 SmartScreen 提示，macOS 可能显示 Gatekeeper 提示。先对照官方 Release 的 SHA-256；若系统仍阻止运行，按包内说明停下并由你本人确认系统提示。</p><p><a href="/docs#install">查看完整安装、激活和隐私说明 →</a></p></article>
+    </section>
+    <footer class="release-footer">Windows x64 与 macOS arm64 构建均通过 GitHub Actions · <a href="https://github.com/Omar-origin/lab-factory/releases/tag/v1.0.0-beta.37" target="_blank" rel="noopener">GitHub 版本与校验清单 ↗</a></footer>
+  </main>
+  <div id="toast" class="toast"></div>
+  <script src="/assets/portal.js"></script>
+</body>
+</html>

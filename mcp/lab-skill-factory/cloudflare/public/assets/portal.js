@@ -16,6 +16,15 @@ const Lab = (() => {
     return body;
   }
   async function mountShell(active) {
+    const mainNav = document.querySelector("#mainNav");
+    if (mainNav && !mainNav.querySelector('[data-route="download"]')) {
+      const link = document.createElement("a");
+      link.className = "nav-link";
+      link.dataset.route = "download";
+      link.href = "/download";
+      link.innerHTML = '<span class="nav-glyph">↓</span>下载安装';
+      mainNav.insertBefore(link, mainNav.querySelector('[data-route="docs"]'));
+    }
     document.querySelectorAll("[data-route]").forEach(node => node.classList.toggle("active", node.dataset.route === active));
     document.querySelector("#menuButton")?.addEventListener("click", () => document.querySelector("#mainNav")?.classList.toggle("open"));
     document.querySelector("#logoutButton")?.addEventListener("click", async () => { try { await request("/api/auth/logout", {method:"POST", body:"{}"}); location.href = "/login"; } catch (error) { toast(error.message); } });
@@ -27,11 +36,11 @@ const Lab = (() => {
       if (body.admin_access && !document.querySelector("[data-control-link]")) { const link=document.createElement("a");link.href="/control/overview";link.dataset.controlLink="";link.className="nav-link control-link";link.innerHTML='<span class="nav-glyph">▦</span>管理中控';document.querySelector("#mainNav")?.append(link); }
       return body;
     } catch (error) {
-      if (error.status === 401 && active !== "plans" && active !== "showcase" && active !== "docs") location.href = `/login?next=${encodeURIComponent(location.pathname + location.search)}`;
+      if (error.status === 401 && active !== "plans" && active !== "showcase" && active !== "download" && active !== "docs") location.href = `/login?next=${encodeURIComponent(location.pathname + location.search)}`;
       return null;
     }
   }
-  if (["/login","/register","/dashboard","/plans","/referrals","/showcase","/docs","/account","/orders"].includes(location.pathname.replace(/\/$/,""))) fetch("/api/metrics/view",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({route:location.pathname.replace(/\/$/,"")}),keepalive:true}).catch(()=>{});
+  if (["/login","/register","/dashboard","/plans","/referrals","/showcase","/download","/docs","/account","/orders"].includes(location.pathname.replace(/\/$/,""))) fetch("/api/metrics/view",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({route:location.pathname.replace(/\/$/,"")}),keepalive:true}).catch(()=>{});
   return {money, date, escape, toast, modal, request, mountShell};
 })();
 if (document.body.dataset.shell) Lab.mountShell(document.body.dataset.shell);
