@@ -44,6 +44,7 @@ TELEMETRY_ALLOWLIST = {
 }
 FEEDBACK_ALLOWLIST = {"review_id", "rating", "issue_categories", "edit_time_bucket", "channel_id"}
 _ONLINE_REFRESH_ATTEMPTED = False
+CLIENT_USER_AGENT = "LabFactory/1.0"
 
 
 def _entitlement_fields(payload: dict[str, Any]) -> dict[str, Any]:
@@ -134,7 +135,7 @@ def post_json(url: str, payload: dict[str, Any], timeout: int = 8) -> dict[str, 
     request = urllib.request.Request(
         url,
         data=body,
-        headers={"Content-Type": "application/json", "Accept": "application/json"},
+        headers={"Content-Type": "application/json", "Accept": "application/json", "User-Agent": CLIENT_USER_AGENT},
         method="POST",
     )
     try:
@@ -149,6 +150,15 @@ def post_json(url: str, payload: dict[str, Any], timeout: int = 8) -> dict[str, 
             ) from exc
         try:
             parsed_error = json.loads(exc.read().decode("utf-8", errors="replace"))
+            if (exc.code == 403 and isinstance(parsed_error, dict)
+                    and parsed_error.get("cloudflare_error") is True
+                    and parsed_error.get("error_code") == 1010):
+                raise OnlineControlError(
+                    "Cloudflare blocked the authorization client (Error 1010); "
+                    "update Lab Factory or ask the site owner to check Browser Integrity Check",
+                    code="AUTH_EDGE_BLOCKED",
+                    unavailable=True,
+                ) from exc
             error = parsed_error.get("error") if isinstance(parsed_error, dict) else None
             if isinstance(error, dict):
                 raise OnlineControlError(str(error.get("message") or "authorization rejected"), code=str(error.get("code") or "AUTH_REJECTED")) from exc
