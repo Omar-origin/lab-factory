@@ -94,6 +94,24 @@ lab-factory request-refund
 
 ## 状态与审计
 
+### Cloudflare 403 / Error 1010
+
+`browser_signature_banned` 表示请求在 Cloudflare 边缘被拦截，尚未进入密钥校验，不能据此判断密钥无效。默认开启的 Browser Integrity Check 也可能拦截 Python urllib；不一定存在手工配置的 WAF 屏蔽规则。
+
+客户端的激活、续租和次数扣减请求统一使用 `User-Agent: LabFactory/1.0`，并保留正常 HTTPS 证书校验。已打包的旧版 Windows EXE 必须更新构建，单独修改旁边的 Python 文件不会改变 EXE 的请求。
+
+要兼容旧客户端，站点管理员应先检查 Cloudflare Security Events 中的拦截来源；若来源为 Browser Integrity Check，可仅对下列范围关闭该检查或配置 Skip，不要关闭全站防护或跳过限流、密钥校验：
+
+```text
+http.host eq "lab.elyther.top" and
+http.request.method eq "POST" and
+http.request.uri.path in {"/api/activate" "/api/lease/refresh" "/api/usage/consume"}
+```
+
+官方说明：[Error 1010](https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-1xxx-errors/error-1010/) 与 [Browser Integrity Check](https://developers.cloudflare.com/waf/tools/browser-integrity-check/)。
+
+修复后先用明确无效的测试密钥及合法格式的设备公钥验证：应收到应用层 `INVALID_KEY`，而不是 Cloudflare Error 1010；再由用户在原安装上执行激活及续租。保留原有 `.lab-factory/device.json` 和系统凭据，不要通过删除安装身份重试。`KEY_ALREADY_USED` 表示绑定到了另一安装；同一安装与同一设备公钥可以重新激活，必要时由管理员核实后换机重置。
+
 ```text
 unused → active → refund_requested → refunded
            └──────────────→ banned
